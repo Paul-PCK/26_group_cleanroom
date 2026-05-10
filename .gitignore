@@ -1,0 +1,30 @@
+# Raw thermal image folders are large and should stay outside version control.
+thermal_images/
+**/thermal_images/
+
+# Regenerated pipeline outputs.
+tmp/
+
+# Python caches.
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Jupyter local state.
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Markdown notes/docs.
+*.md
+docs/*.md
+
+# Local OS/editor files.
+.DS_Store
+*.swp
+*.swo
+
+# Logs and temporary scratch files.
+*.log
+*.tmp

@@ -1,0 +1,1 @@
+"""Cleanroom thermal-image pipeline."""

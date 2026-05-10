@@ -1,0 +1,18 @@
+object_id,label,anchor_x,anchor_y,assign_radius,enabled,source,notes
+machine_0001,Cableduct,7.338237,3.355249,1.10,true,seeded_from_static_object_registry_min_obs_100,seed observations=6444
+machine_0002,Cableduct,9.930696,5.144585,1.10,true,seeded_from_static_object_registry_min_obs_100,seed observations=7115
+machine_0003,Cableduct,11.659309,3.320677,1.10,true,seeded_from_static_object_registry_min_obs_100,seed observations=5022
+machine_0004,Cableduct,8.569293,4.870534,1.10,true,seeded_from_static_object_registry_min_obs_100,seed observations=9867
+machine_0005,Chair,3.540684,0.966093,0.70,true,seeded_from_static_object_registry_min_obs_100,seed observations=186
+machine_0009,Machine,6.472045,0.454010,0.90,true,seeded_from_static_object_registry_min_obs_100,seed observations=4999
+machine_0010,Machine,4.628073,5.335883,0.90,true,seeded_from_static_object_registry_min_obs_100,seed observations=7597
+machine_0011,Machine,3.708326,0.485409,0.90,true,seeded_from_static_object_registry_min_obs_100,seed observations=1703
+machine_0012,Machine,0.791395,1.166659,0.90,true,seeded_from_static_object_registry_min_obs_100,seed observations=2363
+machine_0013,Screen,11.239317,4.130095,0.80,true,seeded_from_static_object_registry_min_obs_100,seed observations=8670
+machine_0014,Screen,3.548589,0.521080,0.80,true,seeded_from_static_object_registry_min_obs_100,seed observations=247
+machine_0015,Screen,11.145109,4.866634,0.80,true,seeded_from_static_object_registry_min_obs_100,seed observations=7529
+machine_0016,Screen,11.661395,4.734289,0.80,true,seeded_from_static_object_registry_min_obs_100,seed observations=394
+machine_0017,Window,1.342118,0.537019,0.65,true,seeded_from_static_object_registry_min_obs_100,seed observations=649
+machine_0018,Window,8.582578,4.115127,0.65,true,seeded_from_static_object_registry_min_obs_100,seed observations=203
+machine_0019,Window,1.365448,0.411879,0.65,true,seeded_from_static_object_registry_min_obs_100,seed observations=1574
+machine_0020,Window,2.227077,0.513734,0.65,true,seeded_from_static_object_registry_min_obs_100,seed observations=161
