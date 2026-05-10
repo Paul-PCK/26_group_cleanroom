@@ -3,7 +3,10 @@ thermal_images/
 **/thermal_images/
 
 # Regenerated pipeline outputs.
-tmp/
+tmp/preprocessed/images/
+tmp/preprocessed/temperature_maps/
+tmp/yolo/annotated_images/
+tmp/animation/daily/
 
 # Python caches.
 __pycache__/
