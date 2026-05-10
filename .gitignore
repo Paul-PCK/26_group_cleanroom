@@ -20,7 +20,7 @@ __pycache__/
 **/.ipynb_checkpoints/
 
 # Markdown notes/docs.
-*.md
+PROJECT_STATUS.md
 docs/*.md
 
 # Local OS/editor files.
