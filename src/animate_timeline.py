@@ -111,6 +111,50 @@ def build_histories(rows, temperature_column):
     return histories
 
 
+def eligible_object_ids(rows, people_or_machine, min_observations):
+    counts = defaultdict(int)
+    for row in rows:
+        if row.get("people_or_machine") == people_or_machine:
+            counts[row["object_id"]] += 1
+    return {object_id for object_id, count in counts.items() if count >= min_observations}
+
+
+def build_forward_filled_machine_frames(timestamps, frame_rows, eligible_machine_ids):
+    last_machine_rows = {}
+    filled_frame_rows = {}
+    filled_machine_rows = []
+
+    for timestamp in timestamps:
+        current_rows = frame_rows[timestamp]
+        people_rows = [row for row in current_rows if row.get("people_or_machine") == "person"]
+        current_machine_rows = {}
+        for row in current_rows:
+            if row.get("people_or_machine") != "machine":
+                continue
+            object_id = row["object_id"]
+            if object_id not in eligible_machine_ids:
+                continue
+            current_row = copy(row)
+            current_row["is_forward_filled"] = "false"
+            current_machine_rows[object_id] = current_row
+            last_machine_rows[object_id] = current_row
+
+        frame_machine_rows = []
+        for object_id in sorted(last_machine_rows):
+            row = copy(last_machine_rows[object_id])
+            if object_id not in current_machine_rows:
+                row["timestamp_dt"] = timestamp
+                row["timestamp"] = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                row["image_name"] = ""
+                row["is_forward_filled"] = "true"
+            frame_machine_rows.append(row)
+            filled_machine_rows.append(row)
+
+        filled_frame_rows[timestamp] = frame_machine_rows + people_rows
+
+    return filled_frame_rows, filled_machine_rows
+
+
 def assign_object_colors(object_ids, cmap_name):
     object_ids = sorted(object_ids)
     if not object_ids:
@@ -142,9 +186,13 @@ def build_animation_from_rows(rows, args):
     if not timestamps:
         raise ValueError("No timestamps found for animation.")
 
-    _, machine_histories = subset_histories(
-        rows, "machine", args.machine_min_observations, args.temperature_column
+    eligible_machine_ids = eligible_object_ids(rows, "machine", args.machine_min_observations)
+    frame_rows, filled_machine_rows = build_forward_filled_machine_frames(
+        timestamps,
+        frame_rows,
+        eligible_machine_ids,
     )
+    machine_histories = build_histories(filled_machine_rows, args.temperature_column)
     _, people_histories = subset_histories(
         rows, "person", args.people_min_observations, args.temperature_column
     )
@@ -245,14 +293,26 @@ def build_animation_from_rows(rows, args):
             if np.isnan(px) or np.isnan(py):
                 continue
             object_id = row["object_id"]
-            label = row["label"]
+            label = (row.get("canonical_label") or row["label"]) if row["people_or_machine"] == "machine" else row["label"]
             marker = LABEL_MARKERS.get(label, "o")
             if row["people_or_machine"] == "machine":
                 color = machine_colors.get(object_id, (0.3, 0.3, 0.3, 0.9))
+                alpha = 0.55 if row.get("is_forward_filled") == "true" else 0.95
             else:
                 color = people_colors.get(object_id, (0.8, 0.2, 0.2, 0.9))
+                alpha = 0.95
             current_map_markers.append(
-                ax_map.scatter([px], [py], s=85, c=[color], marker=marker, edgecolors="black", linewidths=0.7, zorder=4)
+                ax_map.scatter(
+                    [px],
+                    [py],
+                    s=85,
+                    c=[color],
+                    marker=marker,
+                    edgecolors="black",
+                    linewidths=0.7,
+                    alpha=alpha,
+                    zorder=4,
+                )
             )
             current_map_texts.append(
                 ax_map.text(
