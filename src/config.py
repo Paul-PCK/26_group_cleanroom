@@ -50,6 +50,17 @@ STATIC_OBJECT_REGISTRY_CSV = INTEGRATION_OUTPUT_DIR / "static_object_registry.cs
 TIMELINE_OUTPUT_DIR = TMP_DIR / "timeline"
 OBJECT_TIMELINE_CSV = TIMELINE_OUTPUT_DIR / "object_timeline_temperature.csv"
 
+LGBM_OUTPUT_DIR = TMP_DIR / "lgbm"
+LGBM_PREDICTIONS_CSV = LGBM_OUTPUT_DIR / "lgbm_temperature_predictions.csv"
+LGBM_FEATURE_IMPORTANCE_CSV = LGBM_OUTPUT_DIR / "lgbm_feature_importance.csv"
+LGBM_METRICS_CSV = LGBM_OUTPUT_DIR / "lgbm_metrics.csv"
+LGBM_MODEL_TXT = LGBM_OUTPUT_DIR / "lgbm_temperature_model.txt"
+LGBM_PEOPLE_IMPACT_CSV = LGBM_OUTPUT_DIR / "lgbm_people_impact_metrics.csv"
+LGBM_LEARNING_CURVE_PNG = LGBM_OUTPUT_DIR / "lgbm_learning_curve.png"
+LGBM_FEATURE_IMPORTANCE_PNG = LGBM_OUTPUT_DIR / "lgbm_feature_importance.png"
+LGBM_PEOPLE_IMPACT_PNG = LGBM_OUTPUT_DIR / "lgbm_people_impact_metrics.png"
+LGBM_PREDICTION_GIF_DIR = LGBM_OUTPUT_DIR / "prediction_gifs"
+
 ANIMATION_OUTPUT_DIR = TMP_DIR / "animation"
 TIMELINE_GIF = ANIMATION_OUTPUT_DIR / "object_timeline_dual_linechart.gif"
 DAILY_ANIMATION_OUTPUT_DIR = ANIMATION_OUTPUT_DIR / "daily"
@@ -71,6 +82,8 @@ def ensure_output_dirs():
         FINAL_OUTPUT_DIR,
         INTEGRATION_OUTPUT_DIR,
         TIMELINE_OUTPUT_DIR,
+        LGBM_OUTPUT_DIR,
+        LGBM_PREDICTION_GIF_DIR,
         ANIMATION_OUTPUT_DIR,
         DAILY_ANIMATION_OUTPUT_DIR,
         YOLO_TRAINING_DIR,

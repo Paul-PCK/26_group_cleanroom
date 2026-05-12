@@ -39,7 +39,7 @@ def parse_args():
     parser.add_argument("--map-width", type=float, default=15.0)
     parser.add_argument("--map-height", type=float, default=12.0)
     parser.add_argument("--fps", type=int, default=4)
-    parser.add_argument("--temperature-column", choices=("temp_mean_c", "temp_max_c"), default="temp_mean_c")
+    parser.add_argument("--temperature-column", choices=("temp_mean_c", "temp_max_c"), default="temp_max_c")
     parser.add_argument("--machine-min-observations", type=int, default=2)
     parser.add_argument("--people-min-observations", type=int, default=1)
     parser.add_argument("--max-frames", type=int, default=None)
