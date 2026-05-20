@@ -1,0 +1,5 @@
+object_id,reason,rows
+chair_1,"Date split produced an empty train, validation, or test set.",998
+machine_1,"Date split produced an empty train, validation, or test set.",3805
+machine_3,"Date split produced an empty train, validation, or test set.",4346
+machine_5,"Date split produced an empty train, validation, or test set.",4308

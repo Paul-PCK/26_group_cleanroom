@@ -51,6 +51,8 @@ TIMELINE_OUTPUT_DIR = TMP_DIR / "timeline"
 OBJECT_TIMELINE_CSV = TIMELINE_OUTPUT_DIR / "object_timeline_temperature.csv"
 
 LGBM_OUTPUT_DIR = TMP_DIR / "lgbm"
+LGBM_HORIZON_COMPARE_DIR = LGBM_OUTPUT_DIR / "horizon_compare"
+LGBM_MULTIHORIZON_DIR = LGBM_OUTPUT_DIR / "multihorizon"
 LGBM_PREDICTIONS_CSV = LGBM_OUTPUT_DIR / "lgbm_temperature_predictions.csv"
 LGBM_FEATURE_IMPORTANCE_CSV = LGBM_OUTPUT_DIR / "lgbm_feature_importance.csv"
 LGBM_METRICS_CSV = LGBM_OUTPUT_DIR / "lgbm_metrics.csv"
@@ -83,6 +85,8 @@ def ensure_output_dirs():
         INTEGRATION_OUTPUT_DIR,
         TIMELINE_OUTPUT_DIR,
         LGBM_OUTPUT_DIR,
+        LGBM_HORIZON_COMPARE_DIR,
+        LGBM_MULTIHORIZON_DIR,
         LGBM_PREDICTION_GIF_DIR,
         ANIMATION_OUTPUT_DIR,
         DAILY_ANIMATION_OUTPUT_DIR,

@@ -24,12 +24,30 @@ def parse_args():
     parser.add_argument("--frame-iou-threshold", type=float, default=0.35)
     parser.add_argument("--frame-projected-distance-threshold", type=float, default=0.50)
     parser.add_argument("--track-distance-threshold", type=float, default=0.60)
-    parser.add_argument("--static-clustering", choices=("dbscan", "kmeans", "gmm"), default="dbscan")
+    parser.add_argument(
+        "--static-clustering",
+        choices=("dbscan", "dbscan_by_label", "kmeans", "kmeans_by_label", "gmm", "gmm_by_label"),
+        default="dbscan",
+    )
     parser.add_argument("--dbscan-eps", type=float, default=0.50)
     parser.add_argument("--dbscan-min-samples", type=int, default=2)
+    parser.add_argument(
+        "--dbscan-params-by-label",
+        default="Cableduct:eps=0.30,min_samples=8;Machine:eps=0.40,min_samples=8;Screen:eps=0.15,min_samples=10;Window:eps=0.20,min_samples=5",
+    )
     parser.add_argument("--kmeans-clusters", type=int, default=15)
+    parser.add_argument("--kmeans-clusters-by-label", default="Cableduct:7,Machine:6,Screen:2,Window:1")
+    parser.add_argument(
+        "--kmeans-params-by-label",
+        default="Cableduct:n_clusters=7;Machine:n_clusters=6;Screen:n_clusters=2;Window:n_clusters=1",
+    )
     parser.add_argument("--kmeans-random-state", type=int, default=42)
     parser.add_argument("--gmm-max-components", type=int, default=20)
+    parser.add_argument("--gmm-max-components-by-label", default="Cableduct:7,Machine:6,Screen:2,Window:1")
+    parser.add_argument(
+        "--gmm-params-by-label",
+        default="Cableduct:max_components=7;Machine:max_components=6;Screen:max_components=2;Window:max_components=1",
+    )
     parser.add_argument("--gmm-random-state", type=int, default=42)
     parser.add_argument("--track-person", action="store_true")
     return parser.parse_args()
@@ -251,9 +269,16 @@ def prepare_unsupervised_rows(rows, track_person):
     return rows_out, dbscan_rows
 
 
-def cluster_rows_from_labels(rows_out, clustering_rows, points, cluster_labels, method_name, registry_extra=None):
+def cluster_rows_from_labels(
+    rows_out,
+    clustering_rows,
+    points,
+    cluster_labels,
+    method_name,
+    registry_extra=None,
+    assign_noise_to_nearest_anchor=False,
+):
     registry_rows = []
-    object_counter = 0
     noise_counter = 0
     registry_extra = registry_extra or {}
 
@@ -264,11 +289,10 @@ def cluster_rows_from_labels(rows_out, clustering_rows, points, cluster_labels, 
     cluster_anchor = {}
     cluster_object_id = {}
     cluster_canonical_label = {}
+    cluster_records = []
     for cluster_label, indices in sorted(cluster_to_indices.items()):
         if cluster_label == -1:
             continue
-        object_counter += 1
-        object_id = f"machine_{object_counter:04d}"
         xs = [points[index][0] for index in indices]
         ys = [points[index][1] for index in indices]
         anchor_x = float(np.median(xs))
@@ -277,8 +301,37 @@ def cluster_rows_from_labels(rows_out, clustering_rows, points, cluster_labels, 
         label_counter = Counter(row["label"] for row in cluster_rows)
         canonical_label = label_counter.most_common(1)[0][0]
         label_counts = "|".join(f"{label}:{count}" for label, count in sorted(label_counter.items()))
+        cluster_records.append(
+            {
+                "cluster_label": cluster_label,
+                "indices": indices,
+                "anchor_x": anchor_x,
+                "anchor_y": anchor_y,
+                "mean_x": float(np.mean(xs)),
+                "mean_y": float(np.mean(ys)),
+                "canonical_label": canonical_label,
+                "label_counts": label_counts,
+                "cluster_rows": cluster_rows,
+            }
+        )
 
-        cluster_anchor[cluster_label] = (anchor_x, anchor_y)
+    label_counters = defaultdict(int)
+    cluster_records = sorted(
+        cluster_records,
+        key=lambda record: (
+            label_key(record["canonical_label"]),
+            record["anchor_y"],
+            record["anchor_x"],
+        ),
+    )
+    for record in cluster_records:
+        cluster_label = record["cluster_label"]
+        canonical_label = record["canonical_label"]
+        label_prefix = label_key(canonical_label)
+        label_counters[label_prefix] += 1
+        object_id = f"{label_prefix}_{label_counters[label_prefix]}"
+
+        cluster_anchor[cluster_label] = (record["anchor_x"], record["anchor_y"])
         cluster_object_id[cluster_label] = object_id
         cluster_canonical_label[cluster_label] = canonical_label
         registry_rows.append(
@@ -287,14 +340,14 @@ def cluster_rows_from_labels(rows_out, clustering_rows, points, cluster_labels, 
                 "people_or_machine": "machine",
                 "canonical_label": canonical_label,
                 "static_cluster_id": f"{method_name}_{cluster_label:04d}",
-                "label_counts": label_counts,
-                "mean_projected_x": f"{float(np.mean(xs)):.6f}",
-                "mean_projected_y": f"{float(np.mean(ys)):.6f}",
-                "anchor_x": f"{anchor_x:.6f}",
-                "anchor_y": f"{anchor_y:.6f}",
-                "observations": str(len(indices)),
-                "first_seen": min(row["timestamp"] for row in cluster_rows),
-                "last_seen": max(row["timestamp"] for row in cluster_rows),
+                "label_counts": record["label_counts"],
+                "mean_projected_x": f"{record['mean_x']:.6f}",
+                "mean_projected_y": f"{record['mean_y']:.6f}",
+                "anchor_x": f"{record['anchor_x']:.6f}",
+                "anchor_y": f"{record['anchor_y']:.6f}",
+                "observations": str(len(record["indices"])),
+                "first_seen": min(row["timestamp"] for row in record["cluster_rows"]),
+                "last_seen": max(row["timestamp"] for row in record["cluster_rows"]),
                 "clustering_method": f"{method_name}_global_median_anchor",
                 **registry_extra,
             }
@@ -303,16 +356,42 @@ def cluster_rows_from_labels(rows_out, clustering_rows, points, cluster_labels, 
     for row, cluster_label in zip(clustering_rows, cluster_labels):
         row = deepcopy(row)
         if cluster_label == -1:
-            noise_counter += 1
-            row["object_id"] = f"{method_name}_noise_{noise_counter:05d}"
-            row["canonical_label"] = row["label"]
-            row["static_cluster_id"] = "noise"
-            row["anchor_x"] = row.get("projected_x", "")
-            row["anchor_y"] = row.get("projected_y", "")
-            row["display_x"] = row.get("projected_x", "")
-            row["display_y"] = row.get("projected_y", "")
-            row["position_source"] = f"{method_name}_noise_frame_projection"
-            row["clustering_method"] = f"{method_name}_noise"
+            row_label = row["label"]
+            nearest_cluster_label = None
+            nearest_distance = math.inf
+            row_x = safe_float(row, "projected_x", math.nan)
+            row_y = safe_float(row, "projected_y", math.nan)
+            if assign_noise_to_nearest_anchor and math.isfinite(row_x) and math.isfinite(row_y):
+                for candidate_label, (anchor_x, anchor_y) in cluster_anchor.items():
+                    if cluster_canonical_label[candidate_label] != row_label:
+                        continue
+                    distance = math.hypot(row_x - anchor_x, row_y - anchor_y)
+                    if distance < nearest_distance:
+                        nearest_distance = distance
+                        nearest_cluster_label = candidate_label
+
+            if nearest_cluster_label is not None:
+                anchor_x, anchor_y = cluster_anchor[nearest_cluster_label]
+                row["object_id"] = cluster_object_id[nearest_cluster_label]
+                row["canonical_label"] = cluster_canonical_label[nearest_cluster_label]
+                row["static_cluster_id"] = f"{method_name}_{nearest_cluster_label:04d}"
+                row["anchor_x"] = f"{anchor_x:.6f}"
+                row["anchor_y"] = f"{anchor_y:.6f}"
+                row["display_x"] = row["anchor_x"]
+                row["display_y"] = row["anchor_y"]
+                row["position_source"] = f"{method_name}_nearest_same_label_anchor"
+                row["clustering_method"] = method_name
+            else:
+                noise_counter += 1
+                row["object_id"] = f"{method_name}_noise_{noise_counter:05d}"
+                row["canonical_label"] = row["label"]
+                row["static_cluster_id"] = "noise"
+                row["anchor_x"] = row.get("projected_x", "")
+                row["anchor_y"] = row.get("projected_y", "")
+                row["display_x"] = row.get("projected_x", "")
+                row["display_y"] = row.get("projected_y", "")
+                row["position_source"] = f"{method_name}_noise_frame_projection"
+                row["clustering_method"] = f"{method_name}_noise"
         else:
             anchor_x, anchor_y = cluster_anchor[cluster_label]
             row["object_id"] = cluster_object_id[cluster_label]
@@ -356,6 +435,111 @@ def cluster_static_objects_dbscan(rows, dbscan_eps, dbscan_min_samples, track_pe
     )
 
 
+def cluster_label_groups(rows_out, grouped_rows, label_clusterer):
+    all_rows = rows_out
+    all_registry = []
+    for label in sorted(grouped_rows):
+        label_rows = grouped_rows[label]
+        points = [(safe_float(row, "projected_x", 0.0), safe_float(row, "projected_y", 0.0)) for row in label_rows]
+        cluster_labels, method_name, registry_extra = label_clusterer(label, label_rows, points)
+        if not cluster_labels:
+            continue
+        all_rows, label_registry = cluster_rows_from_labels(
+            all_rows,
+            label_rows,
+            points,
+            cluster_labels,
+            method_name,
+            registry_extra,
+            assign_noise_to_nearest_anchor=True,
+        )
+        all_registry.extend(label_registry)
+
+    all_rows = sorted(
+        all_rows,
+        key=lambda row: (
+            parse_timestamp(row["timestamp"]),
+            row["image_name"],
+            row["label"],
+            safe_float(row, "display_x", 0.0),
+            safe_float(row, "display_y", 0.0),
+        ),
+    )
+    return all_rows, all_registry
+
+
+def group_rows_by_label(rows):
+    grouped_rows = defaultdict(list)
+    for row in rows:
+        grouped_rows[row["label"]].append(row)
+    return grouped_rows
+
+
+def parse_label_params_by_label(value):
+    if isinstance(value, dict):
+        params_by_label = {}
+        for label, params in value.items():
+            if isinstance(params, dict):
+                params_by_label[str(label)] = {str(key): param_value for key, param_value in params.items()}
+            else:
+                params_by_label[str(label)] = {"value": params}
+        return params_by_label
+
+    params_by_label = {}
+    for item in str(value or "").split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" not in item:
+            raise ValueError(f"Invalid label parameter setting: {item}. Use Label:key=value,key=value.")
+        label, raw_params = item.split(":", 1)
+        label_params = {}
+        if "=" not in raw_params:
+            label_params["value"] = raw_params.strip()
+        else:
+            for pair in raw_params.split(","):
+                pair = pair.strip()
+                if not pair:
+                    continue
+                if "=" not in pair:
+                    raise ValueError(f"Invalid parameter pair: {pair}. Use key=value.")
+                key, param_value = pair.split("=", 1)
+                label_params[key.strip()] = param_value.strip()
+        params_by_label[label.strip()] = label_params
+    return params_by_label
+
+
+def param_float(params, key, default):
+    return float(params.get(key, default))
+
+
+def param_int(params, key, default):
+    return int(params.get(key, default))
+
+
+def cluster_static_objects_dbscan_by_label(rows, dbscan_eps, dbscan_min_samples, track_person, dbscan_params_by_label=None):
+    rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
+    grouped_rows = group_rows_by_label(clustering_rows)
+    params_by_label = parse_label_params_by_label(dbscan_params_by_label)
+
+    def label_clusterer(label, label_rows, points):
+        label_params = params_by_label.get(label, {})
+        label_eps = param_float(label_params, "eps", dbscan_eps)
+        label_min_samples = param_int(label_params, "min_samples", dbscan_min_samples)
+        cluster_labels = run_sklearn_dbscan(points, eps=label_eps, min_samples=label_min_samples)
+        return (
+            cluster_labels,
+            f"dbscan_{label_key(label)}",
+            {
+                "dbscan_eps": f"{label_eps:.6f}",
+                "dbscan_min_samples": str(label_min_samples),
+                "dbscan_label": label,
+            },
+        )
+
+    return cluster_label_groups(rows_out, grouped_rows, label_clusterer)
+
+
 def cluster_static_objects_kmeans(rows, kmeans_clusters, kmeans_random_state, track_person):
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     points = [(safe_float(row, "projected_x", 0.0), safe_float(row, "projected_y", 0.0)) for row in clustering_rows]
@@ -376,6 +560,58 @@ def cluster_static_objects_kmeans(rows, kmeans_clusters, kmeans_random_state, tr
             "kmeans_random_state": str(kmeans_random_state),
         },
     )
+
+
+def parse_clusters_by_label(value):
+    if isinstance(value, dict):
+        return {str(label): int(count) for label, count in value.items()}
+    clusters = {}
+    for item in str(value or "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" not in item:
+            raise ValueError(f"Invalid label cluster setting: {item}. Use Label:count.")
+        label, count = item.split(":", 1)
+        clusters[label.strip()] = int(count)
+    return clusters
+
+
+def cluster_static_objects_kmeans_by_label(
+    rows,
+    kmeans_clusters_by_label,
+    kmeans_random_state,
+    track_person,
+    kmeans_params_by_label=None,
+):
+    rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
+    clusters_by_label = parse_clusters_by_label(kmeans_clusters_by_label)
+    params_by_label = parse_label_params_by_label(kmeans_params_by_label)
+    grouped_rows = group_rows_by_label(clustering_rows)
+
+    def label_clusterer(label, label_rows, points):
+        label_params = params_by_label.get(label, {})
+        requested_clusters = param_int(label_params, "n_clusters", clusters_by_label.get(label, 0))
+        label_random_state = param_int(label_params, "random_state", kmeans_random_state)
+        if requested_clusters <= 0:
+            return [], f"kmeans_{label_key(label)}", {}
+        cluster_labels = run_sklearn_kmeans(
+            points,
+            n_clusters=requested_clusters,
+            random_state=label_random_state,
+        )
+        actual_clusters = max(1, min(int(requested_clusters), len(points))) if points else 0
+        return (
+            cluster_labels,
+            f"kmeans_{label_key(label)}",
+            {
+                "kmeans_clusters": str(actual_clusters),
+                "kmeans_random_state": str(label_random_state),
+                "kmeans_label": label,
+            },
+        )
+
+    return cluster_label_groups(rows_out, grouped_rows, label_clusterer)
 
 
 def cluster_static_objects_gmm(rows, gmm_max_components, gmm_random_state, track_person):
@@ -401,6 +637,44 @@ def cluster_static_objects_gmm(rows, gmm_max_components, gmm_random_state, track
     )
 
 
+def cluster_static_objects_gmm_by_label(
+    rows,
+    gmm_max_components_by_label,
+    gmm_random_state,
+    track_person,
+    gmm_params_by_label=None,
+):
+    rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
+    max_components_by_label = parse_clusters_by_label(gmm_max_components_by_label)
+    params_by_label = parse_label_params_by_label(gmm_params_by_label)
+    grouped_rows = group_rows_by_label(clustering_rows)
+
+    def label_clusterer(label, label_rows, points):
+        label_params = params_by_label.get(label, {})
+        max_components = param_int(label_params, "max_components", max_components_by_label.get(label, 0))
+        label_random_state = param_int(label_params, "random_state", gmm_random_state)
+        if max_components <= 0:
+            return [], f"gmm_{label_key(label)}", {}
+        cluster_labels, selected_components, selected_bic = run_sklearn_gmm_bic(
+            points,
+            max_components=max_components,
+            random_state=label_random_state,
+        )
+        return (
+            cluster_labels,
+            f"gmm_{label_key(label)}",
+            {
+                "gmm_selected_components": str(selected_components),
+                "gmm_bic": f"{selected_bic:.6f}",
+                "gmm_max_components": str(max_components),
+                "gmm_label": label,
+                "gmm_random_state": str(label_random_state),
+            },
+        )
+
+    return cluster_label_groups(rows_out, grouped_rows, label_clusterer)
+
+
 def write_csv(path: Path, rows, fieldnames):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -423,12 +697,28 @@ def integrate_objects(args):
             dbscan_min_samples=args.dbscan_min_samples,
             track_person=args.track_person,
         )
+    elif clustering_method == "dbscan_by_label":
+        integrated_rows, registry_rows = cluster_static_objects_dbscan_by_label(
+            deduped,
+            dbscan_eps=args.dbscan_eps,
+            dbscan_min_samples=args.dbscan_min_samples,
+            track_person=args.track_person,
+            dbscan_params_by_label=getattr(args, "dbscan_params_by_label", None),
+        )
     elif clustering_method == "kmeans":
         integrated_rows, registry_rows = cluster_static_objects_kmeans(
             deduped,
             kmeans_clusters=args.kmeans_clusters,
             kmeans_random_state=args.kmeans_random_state,
             track_person=args.track_person,
+        )
+    elif clustering_method == "kmeans_by_label":
+        integrated_rows, registry_rows = cluster_static_objects_kmeans_by_label(
+            deduped,
+            kmeans_clusters_by_label=getattr(args, "kmeans_clusters_by_label", ""),
+            kmeans_random_state=args.kmeans_random_state,
+            track_person=args.track_person,
+            kmeans_params_by_label=getattr(args, "kmeans_params_by_label", None),
         )
     elif clustering_method == "gmm":
         integrated_rows, registry_rows = cluster_static_objects_gmm(
@@ -437,8 +727,19 @@ def integrate_objects(args):
             gmm_random_state=args.gmm_random_state,
             track_person=args.track_person,
         )
+    elif clustering_method == "gmm_by_label":
+        integrated_rows, registry_rows = cluster_static_objects_gmm_by_label(
+            deduped,
+            gmm_max_components_by_label=getattr(args, "gmm_max_components_by_label", ""),
+            gmm_random_state=args.gmm_random_state,
+            track_person=args.track_person,
+            gmm_params_by_label=getattr(args, "gmm_params_by_label", None),
+        )
     else:
-        raise ValueError(f"Unsupported static_clustering: {clustering_method}. Use 'dbscan', 'kmeans', or 'gmm'.")
+        raise ValueError(
+            f"Unsupported static_clustering: {clustering_method}. "
+            "Use 'dbscan', 'dbscan_by_label', 'kmeans', 'kmeans_by_label', 'gmm', or 'gmm_by_label'."
+        )
 
     base_fields = list(rows[0].keys()) if rows else []
     extra_fields = [
@@ -474,12 +775,15 @@ def integrate_objects(args):
         "last_seen",
         "clustering_method",
         "dbscan_eps",
+        "dbscan_label",
         "dbscan_min_samples",
         "kmeans_clusters",
+        "kmeans_label",
         "kmeans_random_state",
         "gmm_selected_components",
         "gmm_bic",
         "gmm_max_components",
+        "gmm_label",
         "gmm_random_state",
     ]
     write_csv(args.output_csv, integrated_rows, output_fieldnames)

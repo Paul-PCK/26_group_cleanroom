@@ -28,6 +28,9 @@ POSITION_FEATURES = ["display_x", "display_y", "anchor_x", "anchor_y"]
 # Clock-time features; dataset-relative time is excluded.
 TIME_FEATURES = ["hour", "minute", "day_of_week"]
 
+# Current known temperature at the source timestamp.
+CURRENT_TEMP_FEATURES = ["source_temp"]
+
 # Nearby-people features for each machine timestamp.
 PEOPLE_CONTEXT_FEATURES = [
     "people_count_total",
@@ -39,14 +42,17 @@ PEOPLE_CONTEXT_FEATURES = [
     "nearest_person_dx",
     "nearest_person_dy",
 ]
-# History windows in observation counts, not minutes.
-HISTORY_WINDOWS = [1, 3, 5, 10, 15, 20]
+# Lag windows in observation counts, not minutes.
+LAG_WINDOWS = list(range(1, 31))
+
+# Rolling windows summarize short and longer history without adding every window size.
+ROLLING_WINDOWS = [5, 10, 20, 30]
 
 # Temperature history features for trend and stability.
 LAG_FEATURES = (
-    [f"temp_lag_{window}" for window in HISTORY_WINDOWS]
-    + [f"temp_roll_mean_{window}" for window in HISTORY_WINDOWS]
-    + [f"temp_roll_std_{window}" for window in HISTORY_WINDOWS if window > 1]
+    [f"temp_lag_{window}" for window in LAG_WINDOWS]
+    + [f"temp_roll_mean_{window}" for window in ROLLING_WINDOWS]
+    + [f"temp_roll_std_{window}" for window in ROLLING_WINDOWS]
     + ["temp_delta_1", "seconds_since_previous"]
 )
 
@@ -221,15 +227,17 @@ def add_time_features(df: pd.DataFrame):
 
 
 def add_target_by_minutes(output: pd.DataFrame, temperature_column: str, target_minutes: float):
-    # Find each machine's future target near the requested minute horizon.
+    # Find each machine's future target near the requested minute horizon, resetting each day.
     output["target_temp"] = np.nan
     output["target_timestamp"] = pd.NaT
+    if "_sequence_date" not in output.columns:
+        output["_sequence_date"] = output["timestamp_dt"].dt.date
     target_delta = pd.Timedelta(minutes=target_minutes)
 
     # Drop targets too far from the requested horizon.
     max_target_delta = pd.Timedelta(minutes=target_minutes * 1.5)
 
-    for _, group in output.groupby("object_id", sort=False):
+    for _, group in output.groupby(["object_id", "_sequence_date"], sort=False):
         group = group.sort_values("timestamp_dt")
         timestamps = group["timestamp_dt"].to_numpy(dtype="datetime64[ns]")
         target_timestamps = (group["timestamp_dt"] + target_delta).to_numpy(dtype="datetime64[ns]")
@@ -254,30 +262,32 @@ def add_target_by_minutes(output: pd.DataFrame, temperature_column: str, target_
 
 
 def add_lag_features(df: pd.DataFrame, temperature_column: str, target_horizon: int, target_minutes: float | None = None):
-    # Add target, lag, rolling, and delta features per machine.
+    # Add target, lag, rolling, and delta features per machine, resetting each day.
     output = df.sort_values(["object_id", "timestamp_dt"]).copy()
-    grouped = output.groupby("object_id", sort=False)
+    output["_sequence_date"] = output["timestamp_dt"].dt.date
+    grouped = output.groupby(["object_id", "_sequence_date"], sort=False)
+    output["source_temp"] = output[temperature_column]
     if target_minutes is None:
         output["target_temp"] = grouped[temperature_column].shift(-target_horizon)
         output["target_timestamp"] = grouped["timestamp_dt"].shift(-target_horizon)
     else:
         output = add_target_by_minutes(output, temperature_column, target_minutes)
     shifted = grouped[temperature_column].shift(1)
-    for window in HISTORY_WINDOWS:
+    for window in LAG_WINDOWS:
         output[f"temp_lag_{window}"] = grouped[temperature_column].shift(window)
+    for window in ROLLING_WINDOWS:
         output[f"temp_roll_mean_{window}"] = (
-            shifted.groupby(output["object_id"])
+            shifted.groupby([output["object_id"], output["_sequence_date"]])
             .rolling(window, min_periods=1)
             .mean()
-            .reset_index(level=0, drop=True)
+            .reset_index(level=[0, 1], drop=True)
         )
-        if window > 1:
-            output[f"temp_roll_std_{window}"] = (
-                shifted.groupby(output["object_id"])
-                .rolling(window, min_periods=2)
-                .std()
-                .reset_index(level=0, drop=True)
-            )
+        output[f"temp_roll_std_{window}"] = (
+            shifted.groupby([output["object_id"], output["_sequence_date"]])
+            .rolling(window, min_periods=2)
+            .std()
+            .reset_index(level=[0, 1], drop=True)
+        )
     output["temp_delta_1"] = output[temperature_column] - output["temp_lag_1"]
     output["seconds_since_previous"] = grouped["timestamp_dt"].diff().dt.total_seconds()
     output["target_minutes_ahead"] = (output["target_timestamp"] - output["timestamp_dt"]).dt.total_seconds() / 60.0
@@ -303,12 +313,13 @@ def build_lgbm_dataset(
         CATEGORICAL_FEATURES
         + POSITION_FEATURES
         + TIME_FEATURES
+        + CURRENT_TEMP_FEATURES
         + PEOPLE_CONTEXT_FEATURES
         + LAG_FEATURES
         + ["observations_in_frame", "target_minutes_ahead"]
     )
     # Keep rows with target and full requested history.
-    model_df = featured.dropna(subset=["target_temp", f"temp_lag_{max(HISTORY_WINDOWS)}"]).copy()
+    model_df = featured.dropna(subset=["target_temp", f"temp_lag_{max(LAG_WINDOWS)}"]).copy()
     for column in CATEGORICAL_FEATURES:
         model_df[column] = model_df[column].fillna("").astype("category")
     for column in feature_columns:
