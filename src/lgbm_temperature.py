@@ -363,37 +363,45 @@ def split_by_dates(model_df: pd.DataFrame, train_dates, valid_dates, test_dates)
     return train_df, valid_df, test_df
 
 
-def train_lgbm_model(train_df, valid_df, feature_columns, random_state=42):
+def train_lgbm_model(train_df, valid_df, feature_columns, random_state=42, model_params=None):
     try:
         import lightgbm as lgb
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError("Missing lightgbm. Install it in the active environment before training.") from exc
 
-    model = lgb.LGBMRegressor(
-        objective="regression",
+    params = {
+        "objective": "regression",
 
         # Maximum boosting iterations; early stopping may stop earlier.
-        n_estimators=1200,
+        "n_estimators": 1200,
 
         # Step size for each tree's correction.
-        learning_rate=0.03,
+        "learning_rate": 0.03,
 
         # Tree complexity limit.
-        num_leaves=31,
+        "num_leaves": 31,
 
         # Fraction of rows sampled per tree.
-        subsample=0.85,
+        "subsample": 0.85,
 
         # Fraction of features sampled per tree.
-        colsample_bytree=0.85,
+        "colsample_bytree": 0.85,
 
         # Random seed for reproducibility.
-        random_state=random_state,
+        "random_state": random_state,
 
         # Use all available CPU cores.
-        n_jobs=-1,
-        verbose=-1,
-    )
+        "n_jobs": -1,
+        "verbose": -1,
+    }
+    if model_params:
+        params.update(model_params)
+    params["objective"] = "regression"
+    params["random_state"] = random_state
+    params["n_jobs"] = -1
+    params["verbose"] = -1
+
+    model = lgb.LGBMRegressor(**params)
     evals_result = {}
     model.fit(
         train_df[feature_columns],
@@ -542,7 +550,13 @@ def run_lgbm_temperature_pipeline(args):
         train_df, valid_df, test_df = split_by_dates(model_df, args.train_dates, args.valid_dates, args.test_dates)
     else:
         train_df, valid_df, test_df = split_by_time(model_df, args.valid_ratio, args.test_ratio)
-    model, evals_result = train_lgbm_model(train_df, valid_df, feature_columns, random_state=args.random_state)
+    model, evals_result = train_lgbm_model(
+        train_df,
+        valid_df,
+        feature_columns,
+        random_state=args.random_state,
+        model_params=getattr(args, "model_params", None),
+    )
     predictions = predict_with_split(model, train_df, valid_df, test_df, feature_columns, args.temperature_column)
 
     metrics_rows = []

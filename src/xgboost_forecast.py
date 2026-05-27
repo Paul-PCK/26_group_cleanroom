@@ -127,7 +127,7 @@ def build_multihorizon_dataset(
     return model_df, feature_columns
 
 
-def train_forecast_models(train_df, valid_df, feature_columns, random_state=42):
+def train_forecast_models(train_df, valid_df, feature_columns, random_state=42, model_params=None):
     # Train mean, lower-quantile, and upper-quantile XGBoost models.
     try:
         import xgboost as xgb
@@ -147,6 +147,12 @@ def train_forecast_models(train_df, valid_df, feature_columns, random_state=42):
         enable_categorical=True,
         early_stopping_rounds=80,
     )
+    if model_params:
+        base_params.update(model_params)
+    base_params["random_state"] = random_state
+    base_params["n_jobs"] = -1
+    base_params["tree_method"] = "hist"
+    base_params["enable_categorical"] = True
     fit_params = dict(
         eval_set=[
             (train_df[feature_columns], train_df["target_temp"]),
@@ -367,7 +373,13 @@ def run_grouped_multihorizon_forecast_pipeline(args):
                 train_df, valid_df, test_df = split_by_dates(group_df, args.train_dates, args.valid_dates, args.test_dates)
             else:
                 train_df, valid_df, test_df = split_by_time(group_df, args.valid_ratio, args.test_ratio)
-            models, evals_result = train_forecast_models(train_df, valid_df, feature_columns, random_state=args.random_state)
+            models, evals_result = train_forecast_models(
+                train_df,
+                valid_df,
+                feature_columns,
+                random_state=args.random_state,
+                model_params=getattr(args, "model_params", None),
+            )
             group_predictions = predict_forecast_models(models, train_df, valid_df, test_df, feature_columns, args.temperature_column)
         except Exception as exc:
             skipped_rows.append({group_column: model_group, "reason": str(exc), "rows": len(group_df)})
@@ -437,7 +449,13 @@ def run_multihorizon_forecast_pipeline(args):
     else:
         train_df, valid_df, test_df = split_by_time(model_df, args.valid_ratio, args.test_ratio)
 
-    models, evals_result = train_forecast_models(train_df, valid_df, feature_columns, random_state=args.random_state)
+    models, evals_result = train_forecast_models(
+        train_df,
+        valid_df,
+        feature_columns,
+        random_state=args.random_state,
+        model_params=getattr(args, "model_params", None),
+    )
     predictions = predict_forecast_models(models, train_df, valid_df, test_df, feature_columns, args.temperature_column)
     metrics = build_forecast_metrics(predictions)
     importance, learning_curve = save_forecast_outputs(models, predictions, metrics, feature_columns, args, evals_result)

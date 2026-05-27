@@ -1,0 +1,28 @@
+{
+  "05min": {
+    "n_estimators": 2000,
+    "reg_alpha": 0.0,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "enable_categorical": true,
+    "early_stopping_rounds": 80,
+    "max_depth": 3,
+    "learning_rate": 0.07308623105480647,
+    "min_child_weight": 4.812697463759088,
+    "subsample": 0.6329901547633111,
+    "colsample_bytree": 0.6260423521410341
+  },
+  "10min": {
+    "n_estimators": 2000,
+    "reg_alpha": 0.0,
+    "reg_lambda": 1.0,
+    "tree_method": "hist",
+    "enable_categorical": true,
+    "early_stopping_rounds": 80,
+    "max_depth": 3,
+    "learning_rate": 0.029377364462369326,
+    "min_child_weight": 11.837285223273007,
+    "subsample": 0.6006368368551744,
+    "colsample_bytree": 0.6523872519095065
+  }
+}
