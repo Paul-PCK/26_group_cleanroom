@@ -14,6 +14,7 @@ from config import INTEGRATED_OBJECTS_CSV, LAYOUT_IMAGE, STATIC_OBJECT_REGISTRY_
 
 
 def safe_float(value, default=np.nan):
+    # parse optional numeric CSV values for plotting.
     if value is None:
         return default
     value = str(value).strip()
@@ -23,6 +24,7 @@ def safe_float(value, default=np.nan):
 
 
 def first_present(row, *keys):
+    # return the first usable value from a list of possible columns.
     for key in keys:
         value = row.get(key)
         if value is not None and str(value).strip() and str(value).strip().lower() not in {"none", "nan", "null"}:
@@ -31,6 +33,7 @@ def first_present(row, *keys):
 
 
 def load_csv(path: Path):
+    # load CSV rows as dictionaries for plotting utilities.
     with Path(path).open("r", encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
 
@@ -48,6 +51,7 @@ def plot_dbscan_clusters(
     anchor_size: float = 135.0,
     figsize=(13, 9),
 ):
+    # plot projected detection points with learned static object anchors.
     integrated_rows = load_csv(integrated_csv)
     registry_rows = load_csv(registry_csv)
 
@@ -146,10 +150,12 @@ def plot_dbscan_clusters(
 
 
 def plot_static_clusters(*args, **kwargs):
+    # keep a generic alias for notebooks that compare clustering methods.
     return plot_dbscan_clusters(*args, **kwargs)
 
 
 def summarize_registry(registry_csv: Path = STATIC_OBJECT_REGISTRY_CSV):
+    # return compact anchor metadata for notebook display.
     rows = load_csv(registry_csv)
     return [
         {

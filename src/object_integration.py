@@ -17,6 +17,7 @@ from config import (
 
 
 def parse_args():
+    # collect object integration settings and clustering parameters.
     parser = argparse.ArgumentParser(description="Integrate duplicate detections and static objects.")
     parser.add_argument("--input-csv", type=Path, default=FINAL_TABLE_CSV)
     parser.add_argument("--output-csv", type=Path, default=INTEGRATED_OBJECTS_CSV)
@@ -54,6 +55,7 @@ def parse_args():
 
 
 def parse_timestamp(value: str):
+    # normalize supported timestamp formats into datetime objects.
     value = str(value).strip()
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"):
         try:
@@ -80,6 +82,7 @@ def load_rows(path: Path):
 
 
 def row_geometry(row):
+    # return bbox and projected coordinates as numeric values.
     return (
         safe_float(row, "bbox_x0", 0.0),
         safe_float(row, "bbox_y0", 0.0),
@@ -124,6 +127,7 @@ def confidence_value(row):
 
 
 def should_merge_same_frame(row_a, row_b, iou_threshold, projected_threshold):
+    # identify duplicate detections of the same object within one frame.
     if row_a["label"].strip() != row_b["label"].strip():
         return False
     if people_or_machine(row_a["label"]) != people_or_machine(row_b["label"]):
@@ -132,6 +136,7 @@ def should_merge_same_frame(row_a, row_b, iou_threshold, projected_threshold):
 
 
 def choose_representative(rows):
+    # keep the highest confidence detection as the representative row.
     ranked = sorted(rows, key=lambda row: (confidence_value(row), bbox_area(row)), reverse=True)
     representative = deepcopy(ranked[0])
     label_counter = Counter(row["label"] for row in rows)
@@ -146,6 +151,7 @@ def choose_representative(rows):
 
 
 def dedupe_same_frame(rows, iou_threshold, projected_threshold):
+    # merge connected duplicate detections inside each image frame.
     grouped = defaultdict(list)
     for row in rows:
         grouped[row["image_name"]].append(row)
@@ -175,6 +181,7 @@ def dedupe_same_frame(rows, iou_threshold, projected_threshold):
 
 
 def run_sklearn_dbscan(points, eps, min_samples):
+    # run DBSCAN on projected positions.
     try:
         from sklearn.cluster import DBSCAN
     except ModuleNotFoundError as exc:
@@ -189,6 +196,7 @@ def run_sklearn_dbscan(points, eps, min_samples):
 
 
 def run_sklearn_kmeans(points, n_clusters, random_state):
+    # run KMeans on projected positions with a bounded cluster count.
     try:
         from sklearn.cluster import KMeans
     except ModuleNotFoundError as exc:
@@ -205,6 +213,7 @@ def run_sklearn_kmeans(points, n_clusters, random_state):
 
 
 def run_sklearn_gmm_bic(points, max_components, random_state):
+    # select the GMM component count with the lowest BIC.
     try:
         from sklearn.mixture import GaussianMixture
     except ModuleNotFoundError as exc:
@@ -240,6 +249,7 @@ def label_key(label: str):
 
 
 def prepare_unsupervised_rows(rows, track_person):
+    # split person rows from static-object rows before clustering.
     rows_out = []
     person_counter = 0
 
@@ -278,6 +288,7 @@ def cluster_rows_from_labels(
     registry_extra=None,
     assign_noise_to_nearest_anchor=False,
 ):
+    # convert cluster labels into object ids, anchors, and registry rows.
     registry_rows = []
     noise_counter = 0
     registry_extra = registry_extra or {}
@@ -419,6 +430,7 @@ def cluster_rows_from_labels(
 
 
 def cluster_static_objects_dbscan(rows, dbscan_eps, dbscan_min_samples, track_person):
+    # cluster all static objects with one global DBSCAN setting.
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     points = [(safe_float(row, "projected_x", 0.0), safe_float(row, "projected_y", 0.0)) for row in clustering_rows]
     labels = run_sklearn_dbscan(points, eps=dbscan_eps, min_samples=dbscan_min_samples)
@@ -436,6 +448,7 @@ def cluster_static_objects_dbscan(rows, dbscan_eps, dbscan_min_samples, track_pe
 
 
 def cluster_label_groups(rows_out, grouped_rows, label_clusterer):
+    # apply one clustering strategy independently for each object label.
     all_rows = rows_out
     all_registry = []
     for label in sorted(grouped_rows):
@@ -476,6 +489,7 @@ def group_rows_by_label(rows):
 
 
 def parse_label_params_by_label(value):
+    # parse label-specific clustering parameters from strings or dictionaries.
     if isinstance(value, dict):
         params_by_label = {}
         for label, params in value.items():
@@ -518,6 +532,7 @@ def param_int(params, key, default):
 
 
 def cluster_static_objects_dbscan_by_label(rows, dbscan_eps, dbscan_min_samples, track_person, dbscan_params_by_label=None):
+    # cluster each label with DBSCAN parameters that can differ by label.
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     grouped_rows = group_rows_by_label(clustering_rows)
     params_by_label = parse_label_params_by_label(dbscan_params_by_label)
@@ -541,6 +556,7 @@ def cluster_static_objects_dbscan_by_label(rows, dbscan_eps, dbscan_min_samples,
 
 
 def cluster_static_objects_kmeans(rows, kmeans_clusters, kmeans_random_state, track_person):
+    # cluster all static objects with one global KMeans setting.
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     points = [(safe_float(row, "projected_x", 0.0), safe_float(row, "projected_y", 0.0)) for row in clustering_rows]
     labels = run_sklearn_kmeans(
@@ -563,6 +579,7 @@ def cluster_static_objects_kmeans(rows, kmeans_clusters, kmeans_random_state, tr
 
 
 def parse_clusters_by_label(value):
+    # parse label-to-cluster-count settings.
     if isinstance(value, dict):
         return {str(label): int(count) for label, count in value.items()}
     clusters = {}
@@ -584,6 +601,7 @@ def cluster_static_objects_kmeans_by_label(
     track_person,
     kmeans_params_by_label=None,
 ):
+    # cluster each label with KMeans parameters that can differ by label.
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     clusters_by_label = parse_clusters_by_label(kmeans_clusters_by_label)
     params_by_label = parse_label_params_by_label(kmeans_params_by_label)
@@ -615,6 +633,7 @@ def cluster_static_objects_kmeans_by_label(
 
 
 def cluster_static_objects_gmm(rows, gmm_max_components, gmm_random_state, track_person):
+    # cluster all static objects with one global GMM setting.
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     points = [(safe_float(row, "projected_x", 0.0), safe_float(row, "projected_y", 0.0)) for row in clustering_rows]
     labels, selected_components, selected_bic = run_sklearn_gmm_bic(
@@ -644,6 +663,7 @@ def cluster_static_objects_gmm_by_label(
     track_person,
     gmm_params_by_label=None,
 ):
+    # cluster each label with GMM parameters that can differ by label.
     rows_out, clustering_rows = prepare_unsupervised_rows(rows, track_person)
     max_components_by_label = parse_clusters_by_label(gmm_max_components_by_label)
     params_by_label = parse_label_params_by_label(gmm_params_by_label)
@@ -676,6 +696,7 @@ def cluster_static_objects_gmm_by_label(
 
 
 def write_csv(path: Path, rows, fieldnames):
+    # write rows with an explicit field order for stable downstream reads.
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -684,12 +705,14 @@ def write_csv(path: Path, rows, fieldnames):
 
 
 def integrate_objects(args):
+    # run same-frame dedupe, static clustering, and registry export.
     ensure_output_dirs()
     if not args.input_csv.exists():
         raise FileNotFoundError(f"Missing final table CSV: {args.input_csv}")
     rows = [row for row in load_rows(args.input_csv) if (row.get("label") or "").strip()]
     deduped = dedupe_same_frame(rows, args.frame_iou_threshold, args.frame_projected_distance_threshold)
     clustering_method = getattr(args, "static_clustering", "dbscan")
+    # route to the selected static-object clustering method.
     if clustering_method == "dbscan":
         integrated_rows, registry_rows = cluster_static_objects_dbscan(
             deduped,
@@ -792,6 +815,7 @@ def integrate_objects(args):
 
 
 def main():
+    # run object integration as a command line entry point.
     args = parse_args()
     rows, deduped, integrated_rows, registry_rows = integrate_objects(args)
     print(f"Input rows: {len(rows)}")

@@ -5,6 +5,7 @@ from config import YOLO_BASE_MODEL_PATH, YOLO_TRAINING_PROJECT_DIR
 
 
 def parse_args():
+    # collect YOLO training settings from the command line.
     parser = argparse.ArgumentParser(description="Train YOLO from a prepared dataset.")
     parser.add_argument(
         "--data",
@@ -30,6 +31,7 @@ def parse_args():
 
 
 def train_yolo(args):
+    # train a YOLO detector from the provided dataset configuration.
     if not args.data.exists():
         raise FileNotFoundError(f"Missing data yaml: {args.data}")
     if not args.model.exists():
@@ -50,11 +52,13 @@ def train_yolo(args):
     if args.device:
         train_kwargs["device"] = args.device
 
+    # keep the training call centralized so notebooks and scripts share behavior.
     model = YOLO(str(args.model))
     return model.train(**train_kwargs)
 
 
 def main():
+    # run YOLO training as a command line entry point.
     args = parse_args()
     train_yolo(args)
 

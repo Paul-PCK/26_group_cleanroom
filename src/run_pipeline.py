@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def parse_args():
+    # collect pipeline-level options for the command line runner.
     parser = argparse.ArgumentParser(description="Run the cleanroom pipeline from raw images to outputs.")
     parser.add_argument("--max-images", type=int, default=None)
     parser.add_argument("--skip-animation", action="store_true")
@@ -19,6 +20,7 @@ def parse_args():
 
 
 def run_step(name, script_name, extra_args=None):
+    # execute one pipeline script with shared environment settings.
     command = [sys.executable, str(SCRIPT_DIR / script_name)]
     if extra_args:
         command.extend(extra_args)
@@ -31,6 +33,7 @@ def run_step(name, script_name, extra_args=None):
 
 
 def main():
+    # run the image-to-timeline pipeline in notebook order.
     args = parse_args()
     max_image_args = []
     if args.max_images is not None:

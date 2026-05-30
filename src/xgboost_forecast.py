@@ -28,7 +28,7 @@ DEFAULT_FORECAST_HORIZONS_MIN = [5, 10, 15, 20, 30, 45, 60, 90, 120]
 
 
 def save_learning_curve_plot(evals_result, output_path: Path):
-    # Plot train/valid RMSE over boosting iterations.
+    # plot train/valid RMSE over boosting iterations.
     import matplotlib.pyplot as plt
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -55,7 +55,7 @@ def build_multihorizon_dataset(
     forecast_horizons_min=None,
     people_or_machine: str = "machine",
 ):
-    # Build one row per object, source timestamp, and forecast horizon.
+    # build one row per object, source timestamp, and forecast horizon.
     forecast_horizons_min = list(forecast_horizons_min or DEFAULT_FORECAST_HORIZONS_MIN)
     raw_df = load_timeline(timeline_csv)
     object_df = aggregate_object_timeline(raw_df, temperature_column, people_or_machine=people_or_machine)
@@ -64,7 +64,7 @@ def build_multihorizon_dataset(
 
     featured = add_time_features(object_df)
 
-    # Add history features once; the target columns are rebuilt for every horizon below.
+    # add history features once; the target columns are rebuilt for every horizon below.
     featured = add_lag_features(
         featured,
         temperature_column=temperature_column,
@@ -128,7 +128,7 @@ def build_multihorizon_dataset(
 
 
 def train_forecast_models(train_df, valid_df, feature_columns, random_state=42, model_params=None):
-    # Train mean, lower-quantile, and upper-quantile XGBoost models.
+    # train mean, lower-quantile, and upper-quantile XGBoost models.
     try:
         import xgboost as xgb
     except ModuleNotFoundError as exc:
@@ -200,7 +200,7 @@ def train_forecast_models(train_df, valid_df, feature_columns, random_state=42, 
 
 
 def predict_forecast_models(models, train_df, valid_df, test_df, feature_columns, temperature_column):
-    # Predict every split with mean and 95% quantile interval models.
+    # predict every split with mean and 95% quantile interval models.
     outputs = []
     for split_name, split_df in (("train", train_df), ("valid", valid_df), ("test", test_df)):
         part = split_df[
@@ -234,7 +234,7 @@ def predict_forecast_models(models, train_df, valid_df, test_df, feature_columns
 
 
 def build_forecast_metrics(predictions):
-    # Summarize mean prediction error and 95% interval coverage.
+    # summarize mean prediction error and 95% interval coverage.
     rows = []
     for keys, part in predictions.groupby(["split", "requested_horizon_min"], sort=True):
         split_name, horizon_min = keys
@@ -254,7 +254,7 @@ def build_forecast_metrics(predictions):
 
 
 def save_forecast_outputs(models, predictions, metrics, feature_columns, args, evals_result):
-    # Save multi-horizon predictions, metrics, feature importance, and models.
+    # save multi-horizon predictions, metrics, feature importance, and models.
     ensure_output_dirs()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     predictions.to_csv(args.prediction_csv, index=False)
@@ -275,13 +275,14 @@ def save_forecast_outputs(models, predictions, metrics, feature_columns, args, e
 
 
 def safe_filename(value):
+    # create filesystem-safe names for object or group identifiers.
     value = str(value)
     value = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_")
     return value or "object"
 
 
 def build_group_model_metrics(predictions, group_column):
-    # Summarize forecast error and CI coverage for each trained model group.
+    # summarize forecast error and CI coverage for each trained model group.
     rows = []
     group_columns = ["split", group_column, "requested_horizon_min"]
     for keys, part in predictions.groupby(group_columns, sort=True):
@@ -312,7 +313,7 @@ def save_group_forecast_outputs(
     evals_by_group,
     group_column,
 ):
-    # Save combined predictions and one model set per group.
+    # save combined predictions and one model set per group.
     ensure_output_dirs()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     predictions.to_csv(args.prediction_csv, index=False)
@@ -349,7 +350,7 @@ def save_group_forecast_outputs(
 
 
 def run_grouped_multihorizon_forecast_pipeline(args):
-    # Train one independent multi-horizon forecast model per group.
+    # train one independent multi-horizon forecast model per group.
     model_df, feature_columns = build_multihorizon_dataset(
         timeline_csv=args.input_csv,
         temperature_column=args.temperature_column,
@@ -434,7 +435,7 @@ def run_grouped_multihorizon_forecast_pipeline(args):
 
 
 def run_multihorizon_forecast_pipeline(args):
-    # Run the full multi-horizon forecast and 95% CI pipeline.
+    # run the full multi-horizon forecast and 95% CI pipeline.
     if getattr(args, "group_models", False):
         return run_grouped_multihorizon_forecast_pipeline(args)
 
@@ -475,6 +476,7 @@ def run_multihorizon_forecast_pipeline(args):
 
 
 def default_multihorizon_args():
+    # provide default paths and settings for notebook execution.
     return SimpleNamespace(
         input_csv=OBJECT_TIMELINE_CSV,
         output_dir=XGBOOST_MULTIHORIZON_DIR,

@@ -20,6 +20,7 @@ from config import (
 
 
 def parse_args():
+    # collect plotting inputs and rendering settings.
     parser = argparse.ArgumentParser(description="Create plots and GIFs for LGBM temperature predictions.")
     parser.add_argument("--predictions-csv", type=Path, default=LGBM_PREDICTIONS_CSV)
     parser.add_argument("--feature-importance-csv", type=Path, default=LGBM_FEATURE_IMPORTANCE_CSV)
@@ -36,6 +37,7 @@ def parse_args():
 
 
 def parse_machine_ids(value):
+    # normalize machine id selections from strings or lists.
     if value is None:
         return []
     if isinstance(value, (list, tuple, set)):
@@ -44,10 +46,12 @@ def parse_machine_ids(value):
 
 
 def safe_filename(value):
+    # create filesystem-safe names for GIF outputs.
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value)).strip("_")
 
 
 def configure_matplotlib_cache():
+    # place matplotlib cache files in a writable temporary directory.
     cache_root = Path(tempfile.gettempdir()) / "cleanroom_matplotlib_cache"
     cache_root.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("MPLCONFIGDIR", str(cache_root))
@@ -55,6 +59,7 @@ def configure_matplotlib_cache():
 
 
 def load_predictions(path: Path = LGBM_PREDICTIONS_CSV):
+    # load prediction rows and convert timestamps and numeric columns.
     if not path.exists():
         raise FileNotFoundError(f"Missing LGBM predictions CSV: {path}")
     df = pd.read_csv(path)
@@ -72,6 +77,7 @@ def plot_feature_importance(
     output_png: Path = LGBM_FEATURE_IMPORTANCE_PNG,
     top_n: int = 25,
 ):
+    # plot the highest-importance LGBM features.
     configure_matplotlib_cache()
     import matplotlib.pyplot as plt
 
@@ -102,6 +108,7 @@ def plot_people_impact_metrics(
     metric: str = "rmse",
     split: str = "test",
 ):
+    # plot prediction error metrics by people-context group.
     configure_matplotlib_cache()
     import matplotlib.pyplot as plt
 
@@ -141,6 +148,7 @@ def plot_people_impact_metrics(
 
 
 def select_machine_groups(df: pd.DataFrame, machine_ids=None, machines_per_gif: int = 2):
+    # group selected machines into small GIF panels.
     selected = parse_machine_ids(machine_ids)
     if not selected:
         selected = (
@@ -155,6 +163,7 @@ def select_machine_groups(df: pd.DataFrame, machine_ids=None, machines_per_gif: 
 
 
 def evenly_sample_timestamps(timestamps, max_frames: int):
+    # reduce animation frames while keeping the time span covered.
     timestamps = list(pd.to_datetime(pd.Series(timestamps)).sort_values().drop_duplicates())
     if max_frames is None or max_frames <= 0 or len(timestamps) <= max_frames:
         return timestamps
@@ -170,6 +179,7 @@ def build_prediction_gif_for_day(
     fps: int = 6,
     max_frames: int = 120,
 ):
+    # render forecast history for selected machines on one day.
     configure_matplotlib_cache()
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation, PillowWriter
@@ -203,6 +213,7 @@ def build_prediction_gif_for_day(
         machine_data[str(machine_id)] = (part, label_text)
 
     def draw(frame_index):
+        # draw one GIF frame for the selected timestamp.
         current_time = frame_times[frame_index]
         for ax, machine_id in zip(axes, machine_ids):
             ax.clear()
@@ -279,6 +290,7 @@ def build_daily_prediction_gifs(
     fps: int = 6,
     max_frames: int = 120,
 ):
+    # build daily forecast GIFs from prediction CSV rows.
     ensure_output_dirs()
     predictions = load_predictions(predictions_csv)
     predictions = predictions[predictions["split"] == split].copy()
@@ -317,6 +329,7 @@ def build_daily_prediction_gifs(
 
 
 def main():
+    # run all LGBM visualization outputs from the command line.
     args = parse_args()
     feature_png = plot_feature_importance(args.feature_importance_csv, args.feature_importance_png)
     people_png = plot_people_impact_metrics(args.people_impact_csv, args.people_impact_png)

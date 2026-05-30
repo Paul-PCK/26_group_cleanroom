@@ -21,6 +21,7 @@ from config import (
 
 
 class HumanNN(nn.Module):
+    # map human bounding boxes to room coordinates.
     def __init__(self):
         super().__init__()
         self.backbone = nn.Sequential(
@@ -38,6 +39,7 @@ class HumanNN(nn.Module):
 
 
 class MachineNN(nn.Module):
+    # map non-person bounding boxes to room coordinates.
     def __init__(self):
         super().__init__()
         self.model = nn.Sequential(
@@ -55,6 +57,7 @@ class MachineNN(nn.Module):
 
 
 def parse_args():
+    # collect projection model paths and CSV locations.
     parser = argparse.ArgumentParser(description="Project YOLO bounding boxes to the 2D room map.")
     parser.add_argument("--input-csv", type=Path, default=YOLO_DETECTIONS_CSV)
     parser.add_argument("--output-csv", type=Path, default=PROJECTED_DETECTIONS_CSV)
@@ -65,12 +68,14 @@ def parse_args():
 
 
 def load_state_dict(checkpoint):
+    # support both raw state dicts and checkpoint dictionaries.
     if not isinstance(checkpoint, dict):
         return checkpoint
     return checkpoint.get("model_state_dict", checkpoint)
 
 
 def load_model(model_class, path: Path):
+    # load a projection model in evaluation mode.
     checkpoint = torch.load(path, map_location="cpu")
     model = model_class()
     model.load_state_dict(load_state_dict(checkpoint))
@@ -79,6 +84,7 @@ def load_model(model_class, path: Path):
 
 
 def safe_float(row, key):
+    # read required numeric values from CSV rows.
     value = (row.get(key) or "").strip()
     if not value:
         raise ValueError(f"Missing {key}")
@@ -86,10 +92,12 @@ def safe_float(row, key):
 
 
 def projection_model_name(label: str):
+    # route person detections to the human model and all others to the machine model.
     return "human" if label.strip().lower() == PERSON_LABEL else "machine"
 
 
 def project_row(row, human_model, machine_model, normalized_factor):
+    # normalize bbox coordinates before model inference.
     label = (row.get("label") or "").strip()
     model_name = projection_model_name(label)
     model = human_model if model_name == "human" else machine_model
@@ -107,6 +115,7 @@ def project_row(row, human_model, machine_model, normalized_factor):
 
 
 def run_projection(args):
+    # project all detected objects into 2D room coordinates.
     ensure_output_dirs()
     if not args.input_csv.exists():
         raise FileNotFoundError(f"Missing detection CSV: {args.input_csv}")
@@ -125,6 +134,7 @@ def run_projection(args):
     for row in tqdm(input_rows, desc="Projection", unit="object"):
         if not (row.get("label") or "").strip():
             continue
+        # preserve the original detection row and append projected coordinates.
         model_name, projected_x, projected_y = project_row(
             row,
             human_model=human_model,
@@ -145,6 +155,7 @@ def run_projection(args):
         if field not in fieldnames:
             fieldnames.append(field)
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+    # save projected detections for temperature joining.
     with args.output_csv.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -153,6 +164,7 @@ def run_projection(args):
 
 
 def main():
+    # run projection as a command line entry point.
     args = parse_args()
     rows = run_projection(args)
     print(f"Projected rows: {len(rows)}")

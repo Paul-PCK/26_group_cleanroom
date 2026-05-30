@@ -10,6 +10,7 @@ from config import FINAL_TABLE_CSV, PROJECTED_DETECTIONS_CSV, TIMESTAMP_LOOKUP_C
 
 
 def parse_args():
+    # collect projected detections and timestamp lookup inputs.
     parser = argparse.ArgumentParser(
         description="Build the final detection, projection, and temperature table."
     )
@@ -20,6 +21,7 @@ def parse_args():
 
 
 def load_timestamp_lookup(path: Path):
+    # map source image names to timestamps when the detection rows do not include them.
     lookup = {}
     if not path.exists():
         return lookup
@@ -33,6 +35,7 @@ def load_timestamp_lookup(path: Path):
 
 
 def safe_float(row, key):
+    # read required numeric values from CSV rows.
     value = (row.get(key) or "").strip()
     if not value:
         raise ValueError(f"Missing {key}")
@@ -40,6 +43,7 @@ def safe_float(row, key):
 
 
 def clamp_bbox(x0, y0, x1, y1, width, height):
+    # keep bbox coordinates inside the temperature map bounds.
     left = max(0, min(width, int(math.floor(x0))))
     top = max(0, min(height, int(math.floor(y0))))
     right = max(0, min(width, int(math.ceil(x1))))
@@ -48,6 +52,7 @@ def clamp_bbox(x0, y0, x1, y1, width, height):
 
 
 def bbox_temperature_stats(temperature_map, row):
+    # compute mean and max temperatures inside one detected bbox.
     x0 = safe_float(row, "bbox_x0")
     y0 = safe_float(row, "bbox_y0")
     x1 = safe_float(row, "bbox_x1")
@@ -64,12 +69,14 @@ def bbox_temperature_stats(temperature_map, row):
 
 
 def load_temperature_map(path: Path):
+    # load the aligned temperature map generated during preprocessing.
     if not path.exists():
         raise FileNotFoundError(f"Missing temperature map: {path}")
     return np.load(path).astype(np.float32)
 
 
 def build_final_table(args):
+    # join projected detections with timestamp and temperature values.
     ensure_output_dirs()
     if not args.input_csv.exists():
         raise FileNotFoundError(f"Missing projected detections CSV: {args.input_csv}")
@@ -81,6 +88,7 @@ def build_final_table(args):
     temperature_cache = {}
     output_rows = []
     for row in tqdm(rows, desc="Final table", unit="object"):
+        # cache temperature maps because many detections share the same image.
         image_name = (row.get("image_name") or "").strip()
         temperature_map_path = Path((row.get("temperature_map_path") or "").strip())
         cache_key = str(temperature_map_path)
@@ -139,6 +147,7 @@ def build_final_table(args):
         "scale_source",
     ]
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+    # write the final detection-level table for object integration.
     with args.output_csv.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -147,6 +156,7 @@ def build_final_table(args):
 
 
 def main():
+    # run final table generation as a command line entry point.
     args = parse_args()
     rows = build_final_table(args)
     print(f"Final rows: {len(rows)}")

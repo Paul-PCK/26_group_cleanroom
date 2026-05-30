@@ -32,6 +32,7 @@ LABEL_MARKERS = {
 
 
 def parse_args():
+    # collect animation inputs, rendering settings, and output paths.
     parser = argparse.ArgumentParser(description="Render timeline map and temperature history GIF.")
     parser.add_argument("--input-csv", type=Path, default=OBJECT_TIMELINE_CSV)
     parser.add_argument("--layout", type=Path, default=LAYOUT_IMAGE)
@@ -68,6 +69,7 @@ def safe_float(value: str):
 
 
 def load_rows(path: Path):
+    # load timeline rows and convert numeric fields used by the animation.
     rows = []
     with path.open("r", encoding="utf-8", newline="") as handle:
         for row in csv.DictReader(handle):
@@ -85,6 +87,7 @@ def load_rows(path: Path):
 
 
 def filter_rows_by_day(rows, day: str | None):
+    # keep rows from one day when daily rendering is requested.
     if day is None:
         return rows
     return [row for row in rows if row["timestamp_dt"].strftime("%Y-%m-%d") == day]
@@ -95,6 +98,7 @@ def available_days(rows):
 
 
 def group_rows_by_frame(rows):
+    # group object rows by timestamp for frame-by-frame rendering.
     grouped = defaultdict(list)
     for row in rows:
         grouped[row["timestamp_dt"]].append(row)
@@ -103,6 +107,7 @@ def group_rows_by_frame(rows):
 
 
 def build_histories(rows, temperature_column):
+    # collect per-object temperature histories for line plots.
     histories = defaultdict(list)
     for row in sorted(rows, key=lambda item: (item["timestamp_dt"], item["object_id"])):
         temp = row[temperature_column]
@@ -112,6 +117,7 @@ def build_histories(rows, temperature_column):
 
 
 def eligible_object_ids(rows, people_or_machine, min_observations):
+    # keep objects with enough observations to appear in the animation.
     counts = defaultdict(int)
     for row in rows:
         if row.get("people_or_machine") == people_or_machine:
@@ -120,6 +126,7 @@ def eligible_object_ids(rows, people_or_machine, min_observations):
 
 
 def build_forward_filled_machine_frames(timestamps, frame_rows, eligible_machine_ids):
+    # carry forward the last known machine row when it is missing in a frame.
     last_machine_rows = {}
     filled_frame_rows = {}
     filled_machine_rows = []
@@ -156,6 +163,7 @@ def build_forward_filled_machine_frames(timestamps, frame_rows, eligible_machine
 
 
 def assign_object_colors(object_ids, cmap_name):
+    # assign stable colors to object ids.
     object_ids = sorted(object_ids)
     if not object_ids:
         return {}
@@ -164,6 +172,7 @@ def assign_object_colors(object_ids, cmap_name):
 
 
 def subset_histories(rows, people_or_machine, min_observations, temperature_column):
+    # build histories for one object category.
     subset = [row for row in rows if row.get("people_or_machine") == people_or_machine]
     counts = defaultdict(int)
     for row in subset:
@@ -173,6 +182,7 @@ def subset_histories(rows, people_or_machine, min_observations, temperature_colu
 
 
 def build_animation_from_rows(rows, args):
+    # render a map and paired temperature history plots into one GIF.
     rows = [row for row in rows if row.get("merge_role") == "keep"]
     if not rows:
         raise ValueError("No keep rows found for animation.")
@@ -237,6 +247,7 @@ def build_animation_from_rows(rows, args):
     ax_people.set_xlabel("Time")
 
     def make_line_artists(ax, histories, colors, alpha, width):
+        # initialize one line artist per tracked object.
         artists = {}
         for object_id, points in histories.items():
             x_values = [timestamp for timestamp, _ in points]
@@ -254,12 +265,14 @@ def build_animation_from_rows(rows, args):
     current_map_texts = []
 
     def clear_map_artists():
+        # remove frame-specific map markers before drawing the next frame.
         while current_map_markers:
             current_map_markers.pop().remove()
         while current_map_texts:
             current_map_texts.pop().remove()
 
     def update_line_artists(artists, current_timestamp):
+        # reveal each object's history up to the current frame timestamp.
         active_ids = set()
         for object_id, payload in artists.items():
             count = 0
@@ -275,6 +288,7 @@ def build_animation_from_rows(rows, args):
             artists[object_id]["artist"].set_linewidth(1.9)
 
     def update(frame_index):
+        # draw one animation frame from the current timestamp.
         current_timestamp = timestamps[frame_index]
         current_rows = frame_rows[current_timestamp]
         clear_map_artists()
@@ -337,6 +351,7 @@ def build_animation_from_rows(rows, args):
 
 
 def build_animation(args):
+    # render one animation from all rows or one selected day.
     ensure_output_dirs()
     if not args.input_csv.exists():
         raise FileNotFoundError(f"Missing timeline CSV: {args.input_csv}")
@@ -348,6 +363,7 @@ def build_animation(args):
 
 
 def build_daily_animations(args):
+    # render one animation file per available day.
     ensure_output_dirs()
     if not args.input_csv.exists():
         raise FileNotFoundError(f"Missing timeline CSV: {args.input_csv}")
@@ -371,6 +387,7 @@ def build_daily_animations(args):
 
 
 def main():
+    # run animation rendering as a command line entry point.
     args = parse_args()
     if args.split_by_day:
         outputs = build_daily_animations(args)

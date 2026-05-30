@@ -1,9 +1,11 @@
 from pathlib import Path
 
 
+# resolve project paths shared by notebooks and pipeline scripts.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = PROJECT_ROOT.parent
 
+# locate the thermal image folder from the expected workspace layout.
 SIBLING_THERMAL_IMAGES_DIR = WORKSPACE_ROOT / "thermal_images"
 IN_PROJECT_THERMAL_IMAGES_DIR = PROJECT_ROOT / "thermal_images"
 THERMAL_IMAGES_DIR = (
@@ -12,22 +14,26 @@ THERMAL_IMAGES_DIR = (
     else IN_PROJECT_THERMAL_IMAGES_DIR
 )
 
+# define stable project folders.
 MODELS_DIR = PROJECT_ROOT / "models"
 TMP_DIR = PROJECT_ROOT / "tmp"
 DOCS_DIR = PROJECT_ROOT / "docs"
 NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
 
+# define static project inputs.
 TIMESTAMP_LOOKUP_CSV = PROJECT_ROOT / "thermal_image_timestamp_lookup.csv"
 SCALE_LABELS_CSV = PROJECT_ROOT / "used_scale_labels.csv"
 LAYOUT_IMAGE = PROJECT_ROOT / "feynman_room_layout_without_axis.png"
 STATIC_OBJECT_ANCHORS_CSV = PROJECT_ROOT / "static_object_anchors.csv"
 
+# define model weights used by detection and projection.
 YOLO_MODEL_PATH = MODELS_DIR / "pck_yolo_best.pt"
 YOLO_BASE_MODEL_PATH = MODELS_DIR / "yolov8n.pt"
 YOLO_SEG_BASE_MODEL_PATH = MODELS_DIR / "yolov8n-seg.pt"
 HUMAN_PROJECTION_MODEL_PATH = MODELS_DIR / "pck_human_projection_nn_model.pth"
 MACHINE_PROJECTION_MODEL_PATH = MODELS_DIR / "pck_machine_projection_nn_model.pth"
 
+# define pipeline output locations.
 PREPROCESSED_DIR = TMP_DIR / "preprocessed"
 PREPROCESSED_IMAGES_DIR = PREPROCESSED_DIR / "images"
 PREPROCESSED_TEMPERATURE_MAPS_DIR = PREPROCESSED_DIR / "temperature_maps"
@@ -79,6 +85,7 @@ PERSON_LABEL = "person"
 
 
 def ensure_output_dirs():
+    # create all configured output directories before writing results.
     for path in (
         PREPROCESSED_IMAGES_DIR,
         PREPROCESSED_TEMPERATURE_MAPS_DIR,
@@ -101,6 +108,7 @@ def ensure_output_dirs():
 
 
 def list_thermal_images(thermal_dir: Path = THERMAL_IMAGES_DIR, max_images: int | None = None):
+    # return a deterministic list of thermal images for batch processing.
     image_paths = []
     for pattern in DEFAULT_IMAGE_GLOBS:
         image_paths.extend(sorted(Path(thermal_dir).glob(pattern)))

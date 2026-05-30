@@ -19,19 +19,19 @@ from config import (
 )
 
 
-# Categorical IDs used by LightGBM.
+# categorical ids used by LightGBM.
 CATEGORICAL_FEATURES = ["object_id", "canonical_label"]
 
-# Machine location features in the 2D map.
+# machine location features in the 2D map.
 POSITION_FEATURES = ["display_x", "display_y", "anchor_x", "anchor_y"]
 
-# Clock-time features; dataset-relative time is excluded.
+# clock-time features; dataset-relative time is excluded.
 TIME_FEATURES = ["hour", "minute", "day_of_week"]
 
-# Current known temperature at the source timestamp.
+# current known temperature at the source timestamp.
 CURRENT_TEMP_FEATURES = ["source_temp"]
 
-# Nearby-people features for each machine timestamp.
+# nearby-people features for each machine timestamp.
 PEOPLE_CONTEXT_FEATURES = [
     "people_count_total",
     "people_count_within_1m",
@@ -42,13 +42,13 @@ PEOPLE_CONTEXT_FEATURES = [
     "nearest_person_dx",
     "nearest_person_dy",
 ]
-# Lag windows in observation counts, not minutes.
+# lag windows in observation counts, not minutes.
 LAG_WINDOWS = list(range(1, 31))
 
-# Rolling windows summarize short and longer history without adding every window size.
+# rolling windows summarize short and longer history without adding every window size.
 ROLLING_WINDOWS = [5, 10, 20, 30]
 
-# Temperature history features for trend and stability.
+# temperature history features for trend and stability.
 LAG_FEATURES = (
     [f"temp_lag_{window}" for window in LAG_WINDOWS]
     + [f"temp_roll_mean_{window}" for window in ROLLING_WINDOWS]
@@ -58,6 +58,7 @@ LAG_FEATURES = (
 
 
 def parse_args():
+    # collect model inputs, split settings, and output locations.
     parser = argparse.ArgumentParser(description="Train LightGBM temperature prediction from object timeline CSV.")
     parser.add_argument("--input-csv", type=Path, default=OBJECT_TIMELINE_CSV)
     parser.add_argument("--prediction-csv", type=Path, default=LGBM_PREDICTIONS_CSV)
@@ -95,6 +96,7 @@ def safe_mode(series):
 
 
 def load_timeline(path: Path):
+    # load timestamped object temperatures and parse timestamps.
     if not path.exists():
         raise FileNotFoundError(f"Missing timeline CSV: {path}")
     df = pd.read_csv(path)
@@ -105,7 +107,7 @@ def load_timeline(path: Path):
 
 
 def aggregate_object_timeline(df: pd.DataFrame, temperature_column: str, people_or_machine: str = "machine"):
-    # Convert detections into one object-level row per timestamp.
+    # convert detections into one object-level row per timestamp.
     work = df.copy()
     work = work[work["people_or_machine"] == people_or_machine].copy()
     work = work[work["merge_role"].fillna("keep") == "keep"].copy()
@@ -144,7 +146,7 @@ def aggregate_object_timeline(df: pd.DataFrame, temperature_column: str, people_
 
 
 def aggregate_people_positions(df: pd.DataFrame):
-    # Extract person positions used as machine context.
+    # extract person positions used as machine context.
     people = df.copy()
     people = people[people["people_or_machine"] == "person"].copy()
     people = people[people["merge_role"].fillna("keep") == "keep"].copy()
@@ -165,7 +167,7 @@ def aggregate_people_positions(df: pd.DataFrame):
 
 
 def add_people_context_features(machine_df: pd.DataFrame, raw_df: pd.DataFrame):
-    # Add nearby-person counts, distance, and direction per machine row.
+    # add nearby-person counts, distance, and direction per machine row.
     output = machine_df.copy()
     for column in PEOPLE_CONTEXT_FEATURES:
         output[column] = np.nan
@@ -216,7 +218,7 @@ def add_people_context_features(machine_df: pd.DataFrame, raw_df: pd.DataFrame):
 
 
 def add_time_features(df: pd.DataFrame):
-    # Add clock-time columns used by the model.
+    # add clock-time columns used by the model.
     output = df.copy()
     first_timestamp = output["timestamp_dt"].min()
     output["hour"] = output["timestamp_dt"].dt.hour
@@ -227,14 +229,14 @@ def add_time_features(df: pd.DataFrame):
 
 
 def add_target_by_minutes(output: pd.DataFrame, temperature_column: str, target_minutes: float):
-    # Find each machine's future target near the requested minute horizon, resetting each day.
+    # find each machine's future target near the requested minute horizon, resetting each day.
     output["target_temp"] = np.nan
     output["target_timestamp"] = pd.NaT
     if "_sequence_date" not in output.columns:
         output["_sequence_date"] = output["timestamp_dt"].dt.date
     target_delta = pd.Timedelta(minutes=target_minutes)
 
-    # Drop targets too far from the requested horizon.
+    # drop targets too far from the requested horizon.
     max_target_delta = pd.Timedelta(minutes=target_minutes * 1.5)
 
     for _, group in output.groupby(["object_id", "_sequence_date"], sort=False):
@@ -262,7 +264,7 @@ def add_target_by_minutes(output: pd.DataFrame, temperature_column: str, target_
 
 
 def add_lag_features(df: pd.DataFrame, temperature_column: str, target_horizon: int, target_minutes: float | None = None):
-    # Add target, lag, rolling, and delta features per machine, resetting each day.
+    # add target, lag, rolling, and delta features per machine, resetting each day.
     output = df.sort_values(["object_id", "timestamp_dt"]).copy()
     output["_sequence_date"] = output["timestamp_dt"].dt.date
     grouped = output.groupby(["object_id", "_sequence_date"], sort=False)
@@ -301,7 +303,7 @@ def build_lgbm_dataset(
     target_minutes: float | None = 10.0,
     people_or_machine: str = "machine",
 ):
-    # Build the final LightGBM training table and feature list.
+    # build the final LightGBM training table and feature list.
     raw_df = load_timeline(timeline_csv)
     object_df = aggregate_object_timeline(raw_df, temperature_column, people_or_machine=people_or_machine)
     if people_or_machine == "machine":
@@ -318,7 +320,7 @@ def build_lgbm_dataset(
         + LAG_FEATURES
         + ["observations_in_frame", "target_minutes_ahead"]
     )
-    # Keep rows with target and full requested history.
+    # keep rows with target and full requested history.
     model_df = featured.dropna(subset=["target_temp", f"temp_lag_{max(LAG_WINDOWS)}"]).copy()
     for column in CATEGORICAL_FEATURES:
         model_df[column] = model_df[column].fillna("").astype("category")
@@ -329,7 +331,7 @@ def build_lgbm_dataset(
 
 
 def split_by_time(model_df: pd.DataFrame, valid_ratio: float = 0.15, test_ratio: float = 0.15):
-    # Split data chronologically by ratio.
+    # split data chronologically by ratio.
     timestamps = np.array(sorted(model_df["timestamp_dt"].unique()))
     if len(timestamps) < 3:
         raise ValueError("Need at least three unique timestamps for train/validation/test split.")
@@ -347,7 +349,7 @@ def split_by_time(model_df: pd.DataFrame, valid_ratio: float = 0.15, test_ratio:
 
 
 def split_by_dates(model_df: pd.DataFrame, train_dates, valid_dates, test_dates):
-    # Split data by explicit train/valid/test dates.
+    # split data by explicit train/valid/test dates.
     train_dates = set(parse_date_list(train_dates))
     valid_dates = set(parse_date_list(valid_dates))
     test_dates = set(parse_date_list(test_dates))
@@ -364,6 +366,7 @@ def split_by_dates(model_df: pd.DataFrame, train_dates, valid_dates, test_dates)
 
 
 def train_lgbm_model(train_df, valid_df, feature_columns, random_state=42, model_params=None):
+    # train one LightGBM regressor with optional tuned parameters.
     try:
         import lightgbm as lgb
     except ModuleNotFoundError as exc:
@@ -372,25 +375,25 @@ def train_lgbm_model(train_df, valid_df, feature_columns, random_state=42, model
     params = {
         "objective": "regression",
 
-        # Maximum boosting iterations; early stopping may stop earlier.
+        # maximum boosting iterations; early stopping may stop earlier.
         "n_estimators": 1200,
 
-        # Step size for each tree's correction.
+        # step size for each tree's correction.
         "learning_rate": 0.03,
 
-        # Tree complexity limit.
+        # tree complexity limit.
         "num_leaves": 31,
 
-        # Fraction of rows sampled per tree.
+        # fraction of rows sampled per tree.
         "subsample": 0.85,
 
-        # Fraction of features sampled per tree.
+        # fraction of features sampled per tree.
         "colsample_bytree": 0.85,
 
-        # Random seed for reproducibility.
+        # random seed for reproducibility.
         "random_state": random_state,
 
-        # Use all available CPU cores.
+        # use all available CPU cores.
         "n_jobs": -1,
         "verbose": -1,
     }
@@ -413,10 +416,10 @@ def train_lgbm_model(train_df, valid_df, feature_columns, random_state=42, model
         eval_names=["train", "valid"],
         eval_metric="rmse",
         callbacks=[
-            # Record RMSE for the learning curve.
+            # record RMSE for the learning curve.
             lgb.record_evaluation(evals_result),
 
-            # Stop when valid RMSE stops improving.
+            # stop when valid RMSE stops improving.
             lgb.early_stopping(80, verbose=False),
         ],
         categorical_feature=CATEGORICAL_FEATURES,
@@ -425,6 +428,7 @@ def train_lgbm_model(train_df, valid_df, feature_columns, random_state=42, model
 
 
 def regression_metrics(y_true, y_pred):
+    # compute standard regression metrics from prediction residuals.
     residual = np.asarray(y_true) - np.asarray(y_pred)
     mae = float(np.mean(np.abs(residual)))
     rmse = float(np.sqrt(np.mean(residual**2)))
@@ -434,7 +438,7 @@ def regression_metrics(y_true, y_pred):
 
 
 def predict_with_split(model, train_df, valid_df, test_df, feature_columns, temperature_column):
-    # Predict each split and keep source/target timestamps for evaluation.
+    # predict each split and keep source/target timestamps for evaluation.
     outputs = []
     for split_name, split_df in (("train", train_df), ("valid", valid_df), ("test", test_df)):
         pred = model.predict(split_df[feature_columns])
@@ -461,7 +465,7 @@ def predict_with_split(model, train_df, valid_df, test_df, feature_columns, temp
 
 
 def build_people_impact_metrics(predictions):
-    # Summarize error by people-nearby groups.
+    # summarize error by people-nearby groups.
     groups = [
         ("all_rows", pd.Series(True, index=predictions.index)),
         ("no_person_detected", predictions["people_count_total"].fillna(0) == 0),
@@ -482,6 +486,7 @@ def build_people_impact_metrics(predictions):
 
 
 def configure_matplotlib_cache():
+    # place matplotlib cache files in a writable temporary directory.
     cache_root = Path(tempfile.gettempdir()) / "cleanroom_matplotlib_cache"
     cache_root.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("MPLCONFIGDIR", str(cache_root))
@@ -489,7 +494,7 @@ def configure_matplotlib_cache():
 
 
 def save_learning_curve_plot(evals_result, output_path: Path):
-    # Plot train/valid RMSE over boosting iterations.
+    # plot train/valid RMSE over boosting iterations.
     configure_matplotlib_cache()
     import matplotlib.pyplot as plt
 
@@ -512,7 +517,7 @@ def save_learning_curve_plot(evals_result, output_path: Path):
 
 
 def save_outputs(model, predictions, feature_columns, metrics_rows, people_impact, args):
-    # Save predictions, metrics, feature importance, and model.
+    # save predictions, metrics, feature importance, and model.
     ensure_output_dirs()
     args.prediction_csv.parent.mkdir(parents=True, exist_ok=True)
     predictions.to_csv(args.prediction_csv, index=False)
@@ -538,7 +543,7 @@ def save_outputs(model, predictions, feature_columns, metrics_rows, people_impac
 
 
 def run_lgbm_temperature_pipeline(args):
-    # Run the full training and evaluation pipeline.
+    # run the full training and evaluation pipeline.
     model_df, feature_columns = build_lgbm_dataset(
         timeline_csv=args.input_csv,
         temperature_column=args.temperature_column,
@@ -585,6 +590,7 @@ def run_lgbm_temperature_pipeline(args):
 
 
 def main():
+    # run LGBM training as a command line entry point.
     args = parse_args()
     result = run_lgbm_temperature_pipeline(args)
     print(f"Rows for modeling: {len(result['model_df'])}")

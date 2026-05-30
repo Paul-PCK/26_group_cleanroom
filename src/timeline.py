@@ -6,6 +6,7 @@ from config import INTEGRATED_OBJECTS_CSV, OBJECT_TIMELINE_CSV, ensure_output_di
 
 
 def parse_args():
+    # collect integrated object input and timeline output paths.
     parser = argparse.ArgumentParser(description="Build object timeline temperature CSV.")
     parser.add_argument("--input-csv", type=Path, default=INTEGRATED_OBJECTS_CSV)
     parser.add_argument("--output-csv", type=Path, default=OBJECT_TIMELINE_CSV)
@@ -13,6 +14,7 @@ def parse_args():
 
 
 def build_timeline(args):
+    # convert integrated object rows into the object-level temperature timeline.
     ensure_output_dirs()
     if not args.input_csv.exists():
         raise FileNotFoundError(f"Missing integrated objects CSV: {args.input_csv}")
@@ -23,6 +25,7 @@ def build_timeline(args):
     for row in rows:
         if (row.get("merge_role") or "keep") != "keep":
             continue
+        # keep only one timeline row for the representative detection.
         output_rows.append(
             {
                 "image_name": row.get("image_name", ""),
@@ -77,6 +80,7 @@ def build_timeline(args):
         "temp_max_c",
     ]
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+    # save the timeline used by animation and forecasting notebooks.
     with args.output_csv.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -85,6 +89,7 @@ def build_timeline(args):
 
 
 def main():
+    # run timeline generation as a command line entry point.
     args = parse_args()
     rows = build_timeline(args)
     print(f"Timeline rows: {len(rows)}")

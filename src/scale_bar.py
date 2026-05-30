@@ -11,6 +11,7 @@ from PIL import Image
 from config import SCALE_LABELS_CSV, THERMAL_IMAGES_DIR
 
 
+# define default scale extraction geometry and fallback temperature values.
 DEFAULT_SCALE_BAR = (618, 47, 633, 431)
 DEFAULT_FALLBACK_TOP = 33.1
 DEFAULT_FALLBACK_BOTTOM = 19.0
@@ -40,6 +41,7 @@ DISTANCE_CHUNK_SIZE = 4096
 
 @dataclass(frozen=True)
 class ScaleDigitLayout:
+    # store fixed crop regions for scale-bar digit recognition.
     top_region: tuple[int, int, int, int]
     bottom_region: tuple[int, int, int, int]
     top_digit_boxes: tuple[tuple[int, int, int, int], ...]
@@ -69,11 +71,13 @@ DIGIT_LAYOUT = ScaleDigitLayout(
 
 @dataclass
 class SlotModel:
+    # store reference digit features for one digit slot.
     labels: np.ndarray
     features: np.ndarray
 
 
 def crop_digit_patch(image_array, region, digit_box):
+    # crop and resize one digit patch from the thermal scale text.
     x0, y0, _, _ = region
     dx0, dy0, dx1, dy1 = digit_box
     patch = image_array[y0 + dy0 : y0 + dy1, x0 + dx0 : x0 + dx1]
@@ -85,6 +89,7 @@ def crop_digit_patch(image_array, region, digit_box):
 
 
 def normalize_patch(gray_patch):
+    # standardize a digit patch before distance matching.
     patch = gray_patch.astype(np.float32)
     patch = cv2.GaussianBlur(patch, (3, 3), 0)
     mean = float(patch.mean())
@@ -95,6 +100,7 @@ def normalize_patch(gray_patch):
 
 
 def augment_patch(gray_patch):
+    # create small translated and blurred variants for digit matching.
     height, width = gray_patch.shape
     padded = cv2.copyMakeBorder(gray_patch, 2, 2, 2, 2, borderType=cv2.BORDER_REPLICATE)
     augmented = []
@@ -107,6 +113,7 @@ def augment_patch(gray_patch):
 
 
 class ScaleDigitClassifier:
+    # classify scale-bar digits from reference-labeled thermal images.
     def __init__(
         self,
         thermal_dir: Path,
@@ -119,6 +126,7 @@ class ScaleDigitClassifier:
         self.slot_models = self._build_slot_models()
 
     def _build_slot_models(self):
+        # build per-slot digit reference features from labeled examples.
         slot_samples: dict[tuple[str, int], list[np.ndarray]] = {}
         slot_labels: dict[tuple[str, int], list[str]] = {}
 
@@ -156,6 +164,7 @@ class ScaleDigitClassifier:
         return slot_models
 
     def digit_candidates(self, image_array, position: str, digit_index: int):
+        # rank candidate digits by patch distance for one slot.
         slot_key = (position, digit_index)
         model = self.slot_models.get(slot_key)
         if model is None:
@@ -176,6 +185,7 @@ class ScaleDigitClassifier:
         return sorted(best_per_digit.items(), key=lambda item: item[1])
 
     def read_temperature(self, image_array, position: str):
+        # combine digit candidates into a valid temperature value.
         valid_range = self.layout.valid_range_for(position)
         candidate_sets = [
             self.digit_candidates(image_array, position, digit_index)
@@ -202,6 +212,7 @@ class ScaleDigitClassifier:
         return best_value, best_score
 
     def resolve_temperatures(self, image_array, fallback_top, fallback_bottom):
+        # read top and bottom scale values with fallback values on failure.
         try:
             top_value, top_score = self.read_temperature(image_array, "top")
             bottom_value, bottom_score = self.read_temperature(image_array, "bottom")
@@ -221,6 +232,7 @@ class ScaleDigitClassifier:
 
 
 def load_reference_scale_text(labels_csv: Path = SCALE_LABELS_CSV):
+    # merge built-in scale labels with optional project labels.
     reference_scale_text = dict(REFERENCE_SCALE_TEXT)
     labels_csv = Path(labels_csv)
     if labels_csv.exists():
@@ -238,10 +250,12 @@ def build_scale_digit_classifier(
     thermal_dir: Path = THERMAL_IMAGES_DIR,
     labels_csv: Path = SCALE_LABELS_CSV,
 ):
+    # construct the scale digit classifier used during preprocessing.
     return ScaleDigitClassifier(thermal_dir, load_reference_scale_text(labels_csv), DIGIT_LAYOUT)
 
 
 def build_scale_bar_mapping(image_array, scale_bar, temp_top, temp_bottom):
+    # map scale-bar colors to temperatures using top and bottom scale values.
     x0, y0, x1, y1 = scale_bar
     crop = image_array[y0:y1, x0:x1]
     if crop.size == 0:
@@ -252,6 +266,7 @@ def build_scale_bar_mapping(image_array, scale_bar, temp_top, temp_bottom):
 
 
 def estimate_temperature_map(image_array, palette_rgb, palette_temp):
+    # assign each image pixel to the nearest scale-bar color temperature.
     flat_pixels = image_array.reshape(-1, 3).astype(np.float32)
     unique_pixels, inverse = np.unique(flat_pixels, axis=0, return_inverse=True)
     unique_temperatures = np.empty(len(unique_pixels), dtype=np.float32)
@@ -266,6 +281,7 @@ def estimate_temperature_map(image_array, palette_rgb, palette_temp):
 
 
 def transform_to_bbox_space(array, rotate_180=True, pad_height=640, pad_value=0.0):
+    # align image arrays with the bbox coordinate system used by YOLO.
     transformed = np.rot90(array, k=2) if rotate_180 else array.copy()
     height, width = transformed.shape
     if pad_height > height:
@@ -276,6 +292,7 @@ def transform_to_bbox_space(array, rotate_180=True, pad_height=640, pad_value=0.
 
 
 def normalize_temperature_map(temperature_map, normalize_min, normalize_max):
+    # convert temperature values to a bounded grayscale range.
     denominator = normalize_max - normalize_min
     if denominator <= 0:
         raise ValueError("normalize_max must be greater than normalize_min.")
@@ -283,11 +300,13 @@ def normalize_temperature_map(temperature_map, normalize_min, normalize_max):
 
 
 def image_from_normalized(normalized_image):
+    # convert normalized grayscale values to a PIL image.
     scaled = np.clip(np.round(normalized_image * 255.0), 0, 255).astype(np.uint8)
     return Image.fromarray(scaled, mode="L")
 
 
 def estimate_image_temperature_map(image_path: Path, classifier: ScaleDigitClassifier, args):
+    # estimate one thermal image's temperature map and scale metadata.
     with Image.open(image_path) as image:
         image_array = np.array(image.convert("RGB"))
     scale_info = classifier.resolve_temperatures(

@@ -28,6 +28,7 @@ from scale_bar import (
 
 
 def parse_args():
+    # collect preprocessing inputs and output locations.
     parser = argparse.ArgumentParser(description="Preprocess raw thermal images for YOLO.")
     parser.add_argument("--thermal-dir", type=Path, default=THERMAL_IMAGES_DIR)
     parser.add_argument("--output-dir", type=Path, default=PREPROCESSED_IMAGES_DIR)
@@ -46,6 +47,7 @@ def parse_args():
 
 
 def preprocess_images(args):
+    # convert thermal images into normalized images and aligned temperature maps.
     ensure_output_dirs()
     if not args.thermal_dir.exists():
         raise FileNotFoundError(f"Missing thermal image directory: {args.thermal_dir}")
@@ -61,6 +63,7 @@ def preprocess_images(args):
 
     rows = []
     for index, image_path in enumerate(image_paths, start=1):
+        # estimate the temperature map before transforming it into bbox space.
         temperature_map, scale_info = estimate_image_temperature_map(image_path, classifier, args)
         normalized = normalize_temperature_map(
             temperature_map,
@@ -89,9 +92,9 @@ def preprocess_images(args):
             {
                 "index": index,
                 "image_name": image_path.name,
-                "source_image_path": str(image_path),
-                "preprocessed_image_path": str(preprocessed_path),
-                "temperature_map_path": str(temperature_map_path),
+                #"source_image_path": str(image_path),
+                #"preprocessed_image_path": str(preprocessed_path),
+                #"temperature_map_path": str(temperature_map_path),
                 "scale_top": scale_info["top"],
                 "scale_bottom": scale_info["bottom"],
                 "scale_source": scale_info["source"],
@@ -104,6 +107,7 @@ def preprocess_images(args):
         )
 
     args.summary_csv.parent.mkdir(parents=True, exist_ok=True)
+    # write one summary row per processed image for downstream notebooks.
     fieldnames = [
         "index",
         "image_name",
@@ -127,6 +131,7 @@ def preprocess_images(args):
 
 
 def main():
+    # run preprocessing as a command line entry point.
     args = parse_args()
     rows = preprocess_images(args)
     print(f"Preprocessed images: {len(rows)}")

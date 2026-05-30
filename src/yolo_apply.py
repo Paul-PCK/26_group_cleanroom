@@ -16,6 +16,7 @@ from config import (
 
 
 def parse_args():
+    # collect YOLO model settings and output locations.
     parser = argparse.ArgumentParser(description="Run trained YOLO detection on preprocessed images.")
     parser.add_argument("--preprocessing-summary-csv", type=Path, default=PREPROCESSING_SUMMARY_CSV)
     parser.add_argument("--model-path", type=Path, default=YOLO_MODEL_PATH)
@@ -27,6 +28,7 @@ def parse_args():
 
 
 def load_preprocessing_rows(path: Path, max_images: int | None = None):
+    # load only preprocessed images that still exist on disk.
     if not path.exists():
         raise FileNotFoundError(f"Missing preprocessing summary: {path}")
     with path.open("r", encoding="utf-8", newline="") as handle:
@@ -38,6 +40,7 @@ def load_preprocessing_rows(path: Path, max_images: int | None = None):
 
 
 def class_name_from_result(result, class_id):
+    # resolve YOLO class ids to class names from the model result.
     names = result.names
     if isinstance(names, dict):
         return names.get(class_id, str(class_id))
@@ -45,6 +48,7 @@ def class_name_from_result(result, class_id):
 
 
 def run_detection(args):
+    # apply YOLO to each preprocessed image and write one row per detection.
     try:
         from ultralytics import YOLO
     except ModuleNotFoundError as exc:
@@ -65,6 +69,7 @@ def run_detection(args):
     output_rows = []
 
     for prep_row in tqdm(preprocessed_rows, desc="YOLO apply", unit="image"):
+        # run inference on the normalized image used by the detection model.
         preprocessed_image_path = Path(prep_row["preprocessed_image_path"])
         image_name = prep_row["image_name"]
         with Image.open(preprocessed_image_path) as image:
@@ -76,6 +81,7 @@ def run_detection(args):
 
         boxes = result.boxes
         if boxes is None or len(boxes) == 0:
+            # keep an empty detection row so the source image remains traceable.
             output_rows.append(
                 {
                     **prep_row,
@@ -136,6 +142,7 @@ def run_detection(args):
         "bbox_y1",
     ]
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+    # persist detections for projection and temperature joining.
     with args.output_csv.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
@@ -144,6 +151,7 @@ def run_detection(args):
 
 
 def main():
+    # run detection as a command line entry point.
     args = parse_args()
     rows = run_detection(args)
     print(f"Detection rows: {len(rows)}")
