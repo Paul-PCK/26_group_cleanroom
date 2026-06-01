@@ -1,0 +1,13 @@
+{
+  "n_estimators": 2000,
+  "reg_alpha": 0.0,
+  "reg_lambda": 1.0,
+  "tree_method": "hist",
+  "enable_categorical": true,
+  "early_stopping_rounds": 80,
+  "max_depth": 3,
+  "learning_rate": 0.07359661480116786,
+  "min_child_weight": 10.156869048804639,
+  "subsample": 0.6849356442713105,
+  "colsample_bytree": 0.6727299868828402
+}

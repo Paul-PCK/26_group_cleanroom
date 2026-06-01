@@ -1,0 +1,6 @@
+parameter,importance
+max_depth,0.735217950583591
+min_child_samples,0.12479183366413561
+num_leaves,0.07685276117590345
+learning_rate,0.03787544686382042
+reg_lambda,0.025262007712549453

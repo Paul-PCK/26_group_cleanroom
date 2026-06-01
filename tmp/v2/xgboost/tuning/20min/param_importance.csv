@@ -1,0 +1,6 @@
+parameter,importance
+max_depth,0.9619178108626412
+colsample_bytree,0.01737608259650521
+subsample,0.01011614510962103
+min_child_weight,0.00731456974496785
+learning_rate,0.0032753916862647355
