@@ -2,224 +2,317 @@
 
 ## 1. Project Purpose
 
-This folder contains the cleanroom thermal image pipeline.
+This repository contains a cleanroom thermal data processing pipeline.
 
-The workflow includes:
+The current workflow includes:
 
-- thermal image preprocessing
-- YOLO detection
-- 2D projection
-- object integration
-- object timeline generation
-- temperature prediction
-- model comparison
+- projection neural network training
+- bounding box projection to 2D cleanroom coordinates
+- object anchor integration with DBSCAN
+- object-level time-series generation
+- temperature prediction with LGBM and XGBoost
+- prediction result export and figure generation
 
 ## 2. Folder Structure
 
 ```text
 2026_group_cleanroom/
-  models/
   src/
   notebooks/
-  docs/
+  models/
   tmp/
+  hotspot_machines/
+  hotspot_people_loc/
   thermal_images/
+  Figures/
+  animate_Gaussian/
+  reference/
+  docs/
 ```
 
 ## 3. Environment Setup
 
-Create the environment from `environment.yml`.
+The project environment can be created from `environment.yml`.
 
 ```bash
 conda env create -f environment.yml
 conda activate ITP
 ```
 
-## 4. Required Inputs
+Additional package requirements are listed in:
 
 ```text
-thermal_images/
-models/pck_yolo_best.pt
-models/yolov8n.pt
-models/yolov8n-seg.pt
-models/pck_human_projection_nn_model.pth
-models/pck_machine_projection_nn_model.pth
-thermal_image_timestamp_lookup.csv
-used_scale_labels.csv
-feynman_room_layout_without_axis.png
+requirements.txt
 ```
+
+## 4. Source Files
+
+```text
+src/v2_config.py
+```
+
+Defines project paths, v2 output directories, projection constants, model paths, and shared configuration values.
+
+```text
+src/v2_00_projection_train.py
+```
+
+Trains projection neural networks from hotspot annotation files and writes model weights and training metrics.
+
+```text
+src/v2_01_projection.py
+```
+
+Loads trained projection neural networks and projects bounding box coordinates into 2D cleanroom map coordinates.
+
+```text
+src/v2_02_object_integration.py
+```
+
+Filters same-frame duplicate detections, learns static object anchors with DBSCAN, and assigns detections to object IDs.
+
+```text
+src/v2_03_time_series.py
+```
+
+Aggregates integrated object rows into object-level time-series temperature records.
+
+```text
+src/v2_03_animate_timeline.py
+```
+
+Builds optional timeline animations from object time-series data.
+
+```text
+src/v2_04_lgbm_temperature.py
+```
+
+Builds prediction features from the object timeline and trains LGBM temperature prediction models.
+
+```text
+src/v2_05_xgboost_forecast.py
+```
+
+Builds prediction features from the same timeline structure and trains XGBoost temperature prediction models.
 
 ## 5. Notebook Workflow
 
-Run these notebooks for the main image-to-timeline pipeline:
-
 ```text
-notebooks/01_preprocessing.ipynb
-notebooks/03_yolo_apply.ipynb
-notebooks/04_projection.ipynb
-notebooks/05_final_table_and_object_integration.ipynb
-notebooks/06_generation.ipynb
+notebooks/v2_00_projection_nn_training.ipynb
 ```
 
-Use this notebook only when retraining YOLO:
+Trains the human and non-person projection neural networks from hotspot annotation files.
 
 ```text
-notebooks/02_yolo_training.ipynb
+notebooks/v2_00_debug_bbox_distribution.ipynb
 ```
 
-Run these notebooks for baseline prediction outputs:
+Visualizes bounding box distributions, hotspot annotation positions, and layout-region checks.
 
 ```text
-notebooks/07_lgbm_temperature_prediction.ipynb
-notebooks/07_1_xgboost_multihorizon_forecast.ipynb
+notebooks/v2_01_projection.ipynb
 ```
 
-Run these notebooks for hyperparameter tuning:
+Reads standardized bounding boxes and projects them into 2D cleanroom coordinates.
 
 ```text
-notebooks/08_lgbm_hyperparameter_tuning.ipynb
-notebooks/08_1_xgboost_hyperparameter_tuning.ipynb
+notebooks/v2_02_object_integration_dbscan.ipynb
 ```
 
-After running notebook 08, rerun notebook 07 with tuned parameters enabled to generate tuned LGBM prediction CSV files.
-
-After running notebook 08_1, rerun notebook 07_1 with tuned parameters enabled to generate tuned XGBoost prediction CSV files.
-
-Run this notebook after the LGBM and XGBoost prediction CSV files exist:
+Runs object integration, learns static anchors, assigns projected detections to object IDs, and displays DBSCAN diagnostics.
 
 ```text
-notebooks/09_model_comparison_lgbm_xgboost.ipynb
+notebooks/v2_03_time_series.ipynb
 ```
 
-## 6. Main Outputs
-
-Notebook 05 generates the combined detection, projection, temperature, and object integration outputs.
+Generates the object-level time-series table used by prediction and optional animation stages.
 
 ```text
-tmp/final/final_detection_projection_temperature.csv
+notebooks/v2_06_prediction_model.ipynb
 ```
 
-Contains detection rows with projected 2D positions and temperature values.
+Builds prediction datasets, trains baseline and tuned LGBM/XGBoost models, generates evaluation figures, and exports final prediction CSV files.
+
+## 6. Main Input Files
 
 ```text
-tmp/integration/integrated_projected_objects.csv
+tmp/v2/new_thermal_bbox.csv
 ```
 
-Contains object-level rows after assigning detections to learned object anchors.
+Input thermal bounding box table.
 
 ```text
-tmp/integration/static_object_registry.csv
+tmp/v2/input/v2_thermal_bbox_standardized.csv
 ```
 
-Contains the learned object anchors and object IDs used by later notebooks.
-
-Notebook 06 generates the object timeline used by animation and prediction notebooks.
+Standardized bounding box table used by the projection notebook.
 
 ```text
-tmp/timeline/object_timeline_temperature.csv
+hotspot_machines/
+hotspot_people_loc/
 ```
 
-Contains timestamped object temperature records.
-
-## 7. Prediction Result CSV Files
-
-Notebook 07 generates LGBM prediction CSV files.
+Hotspot annotation folders used for projection neural network training.
 
 ```text
-tmp/lgbm/horizon_compare/05min/lgbm_temperature_predictions.csv
-tmp/lgbm/horizon_compare/10min/lgbm_temperature_predictions.csv
+feynman_room_layout.png
+feynman_room_layout_without_axis.png
 ```
 
-These are baseline LGBM prediction CSV files.
+Cleanroom layout images used for projection and visualization.
 
 ```text
-tmp/lgbm/horizon_compare/05min/lgbm_temperature_predictions_test.csv
-tmp/lgbm/horizon_compare/10min/lgbm_temperature_predictions_test.csv
+thermal_image_timestamp_lookup.csv
 ```
 
-These are baseline LGBM test-only prediction CSV files.
+Timestamp lookup table for thermal image records.
 
 ```text
-tmp/lgbm/horizon_compare/tuned/05min/lgbm_temperature_predictions.csv
-tmp/lgbm/horizon_compare/tuned/10min/lgbm_temperature_predictions.csv
+used_scale_labels.csv
 ```
 
-These are tuned LGBM prediction CSV files.
+Temperature scale label table used by the thermal data workflow.
+
+## 7. Model Files
 
 ```text
-tmp/lgbm/horizon_compare/tuned/05min/lgbm_temperature_predictions_test.csv
-tmp/lgbm/horizon_compare/tuned/10min/lgbm_temperature_predictions_test.csv
+models/pck_human_projection_nn_model.pth
+models/pck_machine_projection_nn_model.pth
 ```
 
-These are tuned LGBM test-only prediction CSV files.
-
-Notebook 07_1 generates XGBoost prediction CSV files.
+Projection model weights stored in the project model folder.
 
 ```text
-tmp/xgboost/horizon_compare/05min/xgboost_temperature_predictions.csv
-tmp/xgboost/horizon_compare/10min/xgboost_temperature_predictions.csv
+tmp/v2/models/v2_human_projection_nn_model.pth
+tmp/v2/models/v2_machine_projection_nn_model.pth
 ```
 
-These are baseline XGBoost prediction CSV files.
+Projection model weights generated by the v2 projection training notebook.
 
 ```text
-tmp/xgboost/horizon_compare/05min/xgboost_temperature_predictions_test.csv
-tmp/xgboost/horizon_compare/10min/xgboost_temperature_predictions_test.csv
+tmp/v2/models/v2_human_projection_training_metrics.json
+tmp/v2/models/v2_machine_projection_training_metrics.json
 ```
 
-These are baseline XGBoost test-only prediction CSV files.
+Projection training metrics generated by the v2 projection training notebook.
 
 ```text
-tmp/xgboost/horizon_compare/tuned/05min/xgboost_temperature_predictions.csv
-tmp/xgboost/horizon_compare/tuned/10min/xgboost_temperature_predictions.csv
+tmp/v2/models/v2_human_projection_training_loss.png
+tmp/v2/models/v2_machine_projection_training_loss.png
 ```
 
-These are tuned XGBoost prediction CSV files.
+Projection training loss figures generated by the v2 projection training notebook.
+
+## 8. Main Output Files
 
 ```text
-tmp/xgboost/horizon_compare/tuned/05min/xgboost_temperature_predictions_test.csv
-tmp/xgboost/horizon_compare/tuned/10min/xgboost_temperature_predictions_test.csv
+tmp/v2/projection/v2_projected_detections.csv
 ```
 
-These are tuned XGBoost test-only prediction CSV files.
-
-`*_predictions.csv` contains train, valid, and test prediction rows.
-
-`*_predictions_test.csv` contains test prediction rows only.
-
-## 8. Hyperparameter Tuning Outputs
-
-Notebook 08 generates LGBM tuning outputs.
+Projected detection table with 2D cleanroom coordinates.
 
 ```text
-tmp/lgbm/tuning/best_lgbm_params.json
+tmp/v2/projection/v2_projected_points_by_label.png
 ```
 
-This file is loaded by notebook 07 when tuned parameters are enabled.
-
-Notebook 08_1 generates XGBoost tuning outputs.
+Projection preview figure grouped by object label.
 
 ```text
-tmp/xgboost/tuning/best_xgboost_params.json
+tmp/v2/integration/v2_integrated_objects.csv
 ```
 
-This file is loaded by notebook 07_1 when tuned parameters are enabled.
-
-## 9. Model Comparison Outputs
-
-Notebook 09 reads existing LGBM and XGBoost prediction CSV files.
+Integrated object table after object anchor assignment.
 
 ```text
-tmp/model_comparison/combined_test_predictions.csv
+tmp/v2/integration/v2_static_object_registry.csv
 ```
 
-Contains combined test prediction rows from the selected LGBM and XGBoost outputs.
+Static object anchor registry with learned object IDs and anchor positions.
 
 ```text
-tmp/model_comparison/model_metrics.csv
-tmp/model_comparison/category_metrics.csv
-tmp/model_comparison/object_metrics.csv
+tmp/v2/integration/v2_dbscan_anchor_layout_preview.png
+tmp/v2/integration/v2_dbscan_outlier_summary_by_label.png
 ```
 
-Contain comparison metrics generated from the combined test prediction rows.
+DBSCAN integration diagnostic figures.
 
+```text
+tmp/v2/timeline/v2_object_timeline_temperature.csv
+```
+
+Object-level time-series temperature table.
+
+## 9. Prediction Output Files
+
+```text
+tmp/v2/prediction_model/predictions/v2_06_prediction_results.csv
+```
+
+Final combined prediction CSV file. Each row is based on one source object timestamp and includes 10-minute and 20-minute prediction columns.
+
+```text
+tmp/v2/prediction_model/predictions/v2_06_prediction_results_10min.csv
+```
+
+Prediction CSV containing 10-minute prediction fields.
+
+```text
+tmp/v2/prediction_model/predictions/v2_06_prediction_results_20min.csv
+```
+
+Prediction CSV containing 20-minute prediction fields.
+
+The exported prediction tables include source object information, source timestamp, source temperature, 2D display position, target temperature, and LGBM/XGBoost prediction values.
+
+## 10. Prediction Tables and Figures
+
+```text
+tmp/v2/prediction_model/tables/v2_06_final_parameter_table.csv
+```
+
+Final parameter table for trained prediction models.
+
+```text
+tmp/v2/prediction_model/tables/v2_06_model_metrics.csv
+```
+
+Model metric table generated from prediction results.
+
+```text
+tmp/v2/prediction_model/tables/v2_06_best_tpe_params.json
+```
+
+Best TPE parameter settings from the prediction model notebook.
+
+```text
+tmp/v2/prediction_model/figures/
+```
+
+Prediction timeline figures generated by object, date, and model.
+
+## 11. Supporting Outputs
+
+```text
+tmp/v2/debug/
+```
+
+Debug figures for bounding box distributions, hotspot targets, and layout region checks.
+
+```text
+tmp/v2/lgbm/
+tmp/v2/xgboost/
+```
+
+Supporting LGBM and XGBoost output folders containing intermediate model outputs, tuning files, metrics, and learning-curve artifacts.
+
+```text
+Figures/
+```
+
+Report figures exported from the analysis workflow.
+
+```text
+animate_Gaussian/
+```
+
+Temperature-field animation script and generated animation output.
